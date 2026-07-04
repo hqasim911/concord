@@ -1,5 +1,20 @@
+# Concord dependencies.
+#
+# transformers/tokenizers are pinned to a coherent, SimAlign-compatible
+# generation. SimAlign (and the transformers of this era) require
+# tokenizers>=0.11.1,!=0.11.3,<0.14; a newer transformers pulls a newer
+# tokenizers and the version check fails at import. The awesome-align
+# backend only uses stable AutoModel/AutoTokenizer APIs, so it works on
+# this range too. numpy is capped below 2.0 because torch/transformers of
+# this era were built against the numpy 1.x ABI.
+#
+# Recommended: install into a fresh venv (see README) rather than a shared
+# base environment, to avoid version drift.
+
 pywebview>=5.0
 lxml>=5.0
 simalign>=0.4
 torch>=2.0
-transformers>=4.30
+transformers>=4.30,<4.35
+tokenizers>=0.13,<0.14
+numpy<2
