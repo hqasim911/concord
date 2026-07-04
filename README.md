@@ -19,7 +19,7 @@ Concord aligns the n-gram to **انقر على زر حفظ** in both → correct
 ```
 concord/
   core/
-    aligner.py    # swappable alignment: SimAlign (neural) | Mock | Caching wrapper
+    aligner.py    # swappable alignment: SimAlign | awesome-align | Mock | Caching
     textutil.py   # Arabic normalization, tokenization, n-gram extraction
     xliff.py      # XLIFF 1.2 / 2.0 parse + round-trip editing (lxml)
     engine.py     # the consistency engine (n-gram -> aligned span -> grouping)
@@ -34,13 +34,43 @@ requirements.txt
 
 ## Setup
 
+Install into a **fresh virtual environment** — not a shared base/conda
+environment. The pinned `transformers`/`tokenizers` versions can collide with
+other packages otherwise, which surfaces as a `tokenizers ... is required`
+import error when the model loads.
+
+**macOS / Linux**
+
 ```bash
 python -m venv .venv
-source .venv/bin/activate            # Windows: .venv\Scripts\activate
+source .venv/bin/activate
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-First run downloads the alignment model (~700MB for mBERT) from Hugging Face.
+**Windows (PowerShell)**
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1            # cmd.exe: .venv\Scripts\activate.bat
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+Verify the install before launching the GUI:
+
+```bash
+python -c "import simalign, transformers; print('deps OK')"
+```
+
+Notes:
+- First run downloads the alignment model (~700MB for mBERT) from Hugging Face.
+- On Windows, `torch` from PyPI installs the CPU build (no CUDA index URL
+  needed). For GPU, install the matching CUDA wheel per pytorch.org first.
+- On Windows, pywebview renders via the **Edge WebView2 Runtime** — bundled
+  with Windows 11 and recent Windows 10; otherwise a free download from
+  Microsoft.
+- To leave the environment later: `deactivate`.
 
 ## Run the desktop app
 
@@ -48,7 +78,8 @@ First run downloads the alignment model (~700MB for mBERT) from Hugging Face.
 python run.py
 ```
 
-1. **Load model** — pick mBERT (faster) or XLM-R (often better on Arabic), click Load.
+1. **Load model** — pick a backend (SimAlign or awesome-align) and a base model
+   (mBERT faster, XLM-R often better on Arabic), click Load.
 2. **Open XLIFF files** — select one or many `.xlf` / `.xliff`.
 3. Set **n-gram length**, **stopword mode**, **min occurrences**, **Arabic normalization**.
 4. **Analyze** — progress bar shows alignment over all segments.
@@ -85,6 +116,12 @@ and similar. Per flagged group, **LLM check** asks for a verdict
 
 ## Swapping the aligner
 
-`build_aligner("simalign", model="bert")` is the default. The `Aligner` interface
-in `aligner.py` is one method (`align(src_tokens, tgt_tokens) -> [(i,j)]`), so
-awesome-align or an API-based aligner can drop in without touching the engine.
+`build_aligner("simalign", model="bert")` is the default. Two neural backends
+ship today — `"simalign"` and `"awesome"` (the awesome-align extraction method,
+implemented directly on `transformers`; no extra dependency). Both accept
+`model="bert"`/`"xlmr"`, or pass a full Hugging Face id — e.g. a fine-tuned
+awesome-align checkpoint — for better accuracy.
+
+The `Aligner` interface in `aligner.py` is one method
+(`align(src_tokens, tgt_tokens) -> [(i,j)]`), so an API-based aligner can drop
+in without touching the engine.
