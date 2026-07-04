@@ -115,6 +115,7 @@ class ConcordAPI:
                     stop_mode=cfg.get("stop_mode", "trim"),
                     min_occurrences=int(cfg.get("min_occurrences", 2)),
                     fold_taa=bool(cfg.get("fold_taa", True)),
+                    strip_clitics=bool(cfg.get("strip_clitics", True)),
                 )
                 engine = ConsistencyEngine(self._aligner, ec)
 

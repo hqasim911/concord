@@ -82,13 +82,17 @@ let foldTaa=true;
 $("#taamode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
   $("#taamode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); foldTaa=b.dataset.v==="on";
 }));
+let stripClitics=true;
+$("#clitmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+  $("#clitmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); stripClitics=b.dataset.v==="on";
+}));
 $("#minocc").addEventListener("input",e=>$("#occlabel").textContent=e.target.value+"×");
 
 // ---------- analyze ----------
 $("#run").addEventListener("click", ()=>{
   $("#progress").classList.remove("hidden"); $("#progbar").style.width="0%";
   $("#run").disabled=true;
-  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa});
+  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics});
 });
 window.addEventListener("analyze-progress", e=>{
   const {done,total}=e.detail; $("#progbar").style.width=(100*done/total).toFixed(1)+"%";

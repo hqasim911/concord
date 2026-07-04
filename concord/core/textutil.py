@@ -31,6 +31,38 @@ def normalize_ar(text: str, fold_taa: bool = True) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Light stemming (collapse morphological variants of the SAME term)
+# ---------------------------------------------------------------------------
+# Definite article "ال" plus optional leading preposition/conjunction
+# proclitics, longest-first. Deliberately conservative: only ARTICLE-BEARING
+# prefixes are stripped, never a bare و/ب/ك/ل, because many ordinary words
+# legitimately start with those letters (باب, كتاب, ولد). This keeps
+# precision high — it merges الزر / بالزر / وبالزر -> زر without merging
+# unrelated words.
+_AR_ARTICLE_CLITICS = (
+    "وبال", "فبال", "وكال", "فكال",
+    "وال", "فال", "بال", "كال", "ولل", "فلل",
+    "لل", "ال",
+)
+
+
+@functools.lru_cache(maxsize=50000)
+def light_stem_ar(word: str) -> str:
+    """
+    Strip a leading definite-article clitic so morphological variants of a
+    term compare equal (الزر / بالزر / وبالزر -> زر).
+
+    Length-guarded to keep >= 2 stem characters, so short words are not
+    over-stemmed (e.g. الف "thousand" -> "ف" would leave 1 char, so it is
+    left untouched).
+    """
+    for p in _AR_ARTICLE_CLITICS:
+        if word.startswith(p) and len(word) - len(p) >= 2:
+            return word[len(p):]
+    return word
+
+
+# ---------------------------------------------------------------------------
 # Tokenization
 # ---------------------------------------------------------------------------
 _WORD_RE = re.compile(r"[^\s]+")
@@ -123,10 +155,15 @@ def ngrams_with_positions(
 def target_span(
     tgt_tokens: List[str], alignments, ng_start: int, ng_len: int,
     normalize: bool = True, fold_taa: bool = True,
+    strip_clitics: bool = True,
 ) -> str:
     """
     Given the n-gram's source token range and the alignment, return the
     contiguous Arabic span (min..max aligned target index) that translates it.
+
+    strip_clitics: when normalizing, also fold the definite article/clitic
+    off each word so morphological variants of the same term are compared
+    as equal (see light_stem_ar).
     """
     ng_src = set(range(ng_start, ng_start + ng_len))
     tgt_idx = sorted({ti for (si, ti) in alignments if si in ng_src})
@@ -135,7 +172,12 @@ def target_span(
     lo, hi = tgt_idx[0], tgt_idx[-1]
     span = " ".join(tgt_tokens[lo:hi + 1])
     span = strip_edge_punct_span(span)
-    return normalize_ar(span, fold_taa) if normalize else span
+    if not normalize:
+        return span
+    span = normalize_ar(span, fold_taa)
+    if strip_clitics:
+        span = " ".join(light_stem_ar(w) for w in span.split())
+    return span
 
 
 def strip_edge_punct_span(span: str) -> str:

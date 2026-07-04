@@ -59,6 +59,7 @@ class EngineConfig:
     stop_mode: str = "trim"          # off | trim | strict
     min_occurrences: int = 2
     fold_taa: bool = True
+    strip_clitics: bool = True       # fold الـ / clitics off target terms
     stopwords: Optional[set] = None
 
 
@@ -107,6 +108,7 @@ class ConsistencyEngine:
                 span = target_span(
                     tgt_tokens, alignment, start, length,
                     normalize=True, fold_taa=cfg.fold_taa,
+                    strip_clitics=cfg.strip_clitics,
                 )
                 if not span:
                     # alignment produced nothing for this n-gram; skip rather
