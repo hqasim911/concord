@@ -84,7 +84,8 @@ def judge_group(cfg: LLMConfig, ngram: str, spans: List[str]) -> Dict:
         if content.startswith("```"):
             content = content.strip("`")
             content = content.split("\n", 1)[1] if "\n" in content else content
-            content = content.replace("json", "", 1).strip() if content.lower().startswith("json") else content
+            if content.lower().startswith("json"):
+                content = content.replace("json", "", 1).strip()
         return json.loads(content)
     except Exception:
         return {"verdict": "unknown", "raw": body.get("choices", [{}])[0]

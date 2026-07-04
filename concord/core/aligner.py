@@ -11,7 +11,6 @@ The engine asks each aligner for token-level (src_idx, tgt_idx) pairs.
 """
 
 from __future__ import annotations
-import functools
 import hashlib
 from typing import List, Tuple, Dict, Optional
 

@@ -17,6 +17,7 @@ from typing import List, Tuple
 # ---------------------------------------------------------------------------
 _AR_DIACRITICS_TATWEEL = re.compile("[\u064B-\u0652\u0640]")
 
+
 @functools.lru_cache(maxsize=50000)
 def normalize_ar(text: str, fold_taa: bool = True) -> str:
     """Strip tatweel + diacritics, unify alef/hamza forms; optionally taa->haa."""
@@ -34,9 +35,11 @@ def normalize_ar(text: str, fold_taa: bool = True) -> str:
 # ---------------------------------------------------------------------------
 _WORD_RE = re.compile(r"[^\s]+")
 
+
 def tokenize(text: str) -> List[str]:
     """Whitespace tokenization preserving token order/index (alignment needs indices)."""
     return _WORD_RE.findall(text.strip())
+
 
 def strip_edge_punct(tok: str) -> str:
     return re.sub(r"^[^\w\u0600-\u06FF]+|[^\w\u0600-\u06FF]+$", "", tok)

@@ -117,6 +117,7 @@ class ConcordAPI:
                     fold_taa=bool(cfg.get("fold_taa", True)),
                 )
                 engine = ConsistencyEngine(self._aligner, ec)
+
                 def prog(done, total):
                     self._emit("analyze-progress", {"done": done, "total": total})
                 flags = engine.analyze(self._segments, progress=prog)

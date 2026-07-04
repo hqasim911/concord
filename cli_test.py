@@ -36,7 +36,10 @@ def main():
         print("Using heuristic mock aligner (install model + use --real for accuracy)")
         aligner = CachingAligner(HeuristicAligner())
 
-    eng = ConsistencyEngine(aligner, EngineConfig(nmin=2, nmax=3, stop_mode="trim", min_occurrences=2))
+    eng = ConsistencyEngine(
+        aligner,
+        EngineConfig(nmin=2, nmax=3, stop_mode="trim", min_occurrences=2),
+    )
     flags = eng.analyze(xf.segments, progress=lambda d, t: None)
 
     print(f"\nFlagged {len(flags)} inconsistent term(s):\n")

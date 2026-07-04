@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Callable, Optional
 
 from .textutil import (
-    tokenize, ngrams_with_positions, target_span, normalize_ar, DEFAULT_STOPWORDS,
+    tokenize, ngrams_with_positions, target_span, DEFAULT_STOPWORDS,
 )
 from .aligner import Aligner
 
