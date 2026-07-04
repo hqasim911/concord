@@ -1,1 +1,3 @@
 concord/.claude/
+__pycache__/
+*.pyc

@@ -4,14 +4,16 @@ Word-alignment layer.
 Defines a swappable Aligner interface so the consistency engine never depends
 on a specific alignment backend. Implementations:
 
-  - SimAlignAligner : real neural aligner (mBERT/XLM-R), local, accurate.
-  - MockAligner     : hand-fed alignments, for tests / offline demos.
+  - SimAlignAligner    : neural aligner via SimAlign (mBERT/XLM-R), local.
+  - AwesomeAlignAligner : awesome-align extraction method (Dou & Neubig 2021).
+  - MockAligner        : hand-fed alignments, for tests / offline demos.
 
 The engine asks each aligner for token-level (src_idx, tgt_idx) pairs.
 """
 
 from __future__ import annotations
 import hashlib
+import itertools
 from typing import List, Tuple, Dict, Optional
 
 
@@ -54,6 +56,86 @@ class SimAlignAligner(Aligner):
                 return res[k]
         # fallback: whatever key exists
         return next(iter(res.values()), [])
+
+
+class AwesomeAlignAligner(Aligner):
+    """
+    Word aligner using the awesome-align extraction method (Dou & Neubig,
+    2021), implemented directly on top of a multilingual Transformer.
+
+    Instead of depending on the awesome-align package/CLI, this reproduces
+    its inference algorithm: take contextual sub-word embeddings from an
+    aligned hidden layer, build the src<->tgt similarity matrix, apply a
+    softmax in both directions, keep cells above threshold in BOTH (the
+    "intersection"), then map sub-word cells back up to word indices.
+
+    model: an HF model id, or the shorthands 'bert' / 'xlmr' (mapped in
+      build_aligner). Point it at a fine-tuned awesome-align checkpoint for
+      the accuracy gains reported in the paper; the base multilingual model
+      is roughly on par with SimAlign.
+    """
+    name = "awesome"
+
+    def __init__(self, model: str = "bert-base-multilingual-cased",
+                 device: str = "cpu", align_layer: int = 8,
+                 threshold: float = 1e-3):
+        import torch
+        from transformers import AutoModel, AutoTokenizer
+        self._torch = torch
+        self._tokenizer = AutoTokenizer.from_pretrained(model)
+        self._model = AutoModel.from_pretrained(model).to(device).eval()
+        self._device = device
+        self._align_layer = align_layer
+        self._threshold = threshold
+
+    def align(self, src_tokens, tgt_tokens) -> Alignment:
+        if not src_tokens or not tgt_tokens:
+            return []
+        torch = self._torch
+        tok = self._tokenizer
+
+        # sub-word tokenize each word, tracking which word each piece is from
+        sub_src = [tok.tokenize(w) for w in src_tokens]
+        sub_tgt = [tok.tokenize(w) for w in tgt_tokens]
+        flat_src = list(itertools.chain.from_iterable(
+            tok.convert_tokens_to_ids(s) for s in sub_src))
+        flat_tgt = list(itertools.chain.from_iterable(
+            tok.convert_tokens_to_ids(s) for s in sub_tgt))
+        if not flat_src or not flat_tgt:
+            return []
+
+        enc_src = tok.prepare_for_model(
+            flat_src, return_tensors="pt", truncation=True,
+            max_length=tok.model_max_length)["input_ids"]
+        enc_tgt = tok.prepare_for_model(
+            flat_tgt, return_tensors="pt", truncation=True,
+            max_length=tok.model_max_length)["input_ids"]
+
+        # sub-word index -> word index (parallel to the flat id lists above)
+        sub2word_src = [i for i, s in enumerate(sub_src) for _ in s]
+        sub2word_tgt = [i for i, s in enumerate(sub_tgt) for _ in s]
+
+        with torch.no_grad():
+            # [1:-1] drops the [CLS]/[SEP] special tokens
+            hs_src = self._model(
+                enc_src.unsqueeze(0).to(self._device),
+                output_hidden_states=True,
+            ).hidden_states[self._align_layer][0, 1:-1]
+            hs_tgt = self._model(
+                enc_tgt.unsqueeze(0).to(self._device),
+                output_hidden_states=True,
+            ).hidden_states[self._align_layer][0, 1:-1]
+
+            sim = torch.matmul(hs_src, hs_tgt.transpose(-1, -2))
+            fwd = torch.nn.functional.softmax(sim, dim=-1)
+            bwd = torch.nn.functional.softmax(sim, dim=-2)
+            inter = (fwd > self._threshold) * (bwd > self._threshold)
+
+        pairs = set()
+        for idx in torch.nonzero(inter, as_tuple=False):
+            i, j = int(idx[0]), int(idx[1])
+            pairs.add((sub2word_src[i], sub2word_tgt[j]))
+        return sorted(pairs)
 
 
 class MockAligner(Aligner):
@@ -102,10 +184,21 @@ class CachingAligner(Aligner):
         return self._inner.name
 
 
+# Shorthands so the same UI bert/xlmr toggle drives every backend.
+_AWESOME_MODEL_ALIASES = {
+    "bert": "bert-base-multilingual-cased",
+    "xlmr": "xlm-roberta-base",
+}
+
+
 def build_aligner(kind: str = "simalign", **kwargs) -> Aligner:
-    """Factory. kind in {'simalign','mock'}; always wrapped in caching."""
+    """Factory. kind in {'simalign','awesome','mock'}; wrapped in caching."""
     if kind == "simalign":
         base = SimAlignAligner(**kwargs)
+    elif kind == "awesome":
+        m = kwargs.get("model", "bert")
+        kwargs["model"] = _AWESOME_MODEL_ALIASES.get(m, m)
+        base = AwesomeAlignAligner(**kwargs)
     elif kind == "mock":
         base = MockAligner(kwargs.get("table"))
     else:

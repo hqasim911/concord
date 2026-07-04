@@ -8,11 +8,16 @@ let segOriginal = new Map();  // sid -> original target
 
 // ---------- model ----------
 let modelChoice = "bert";
+let backendChoice = "simalign";
 $("#modelpick").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
   $("#modelpick").querySelectorAll("button").forEach(x=>x.classList.remove("on"));
   b.classList.add("on"); modelChoice=b.dataset.v;
 }));
-$("#loadmodel").addEventListener("click", ()=>api().load_model("simalign", modelChoice));
+$("#backendpick").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+  $("#backendpick").querySelectorAll("button").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on"); backendChoice=b.dataset.v;
+}));
+$("#loadmodel").addEventListener("click", ()=>api().load_model(backendChoice, modelChoice));
 
 window.addEventListener("model-status", e=>{
   const d=e.detail, dot=$("#mdot"), txt=$("#mtext");
