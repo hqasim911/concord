@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Concord — Aligned XLIFF Consistency</title>
+<style>
+  :root{
+    --ink:#15211c; --paper:#f3efe4; --paper-2:#e9e3d2; --line:#cfc7b2;
+    --jade:#1f6f54; --jade-deep:#134836; --amber:#c8842a; --rust:#a23b22;
+    --mut:#5d6a62; --shadow:rgba(19,72,54,.10);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--paper);color:var(--ink);
+    font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    line-height:1.45;-webkit-font-smoothing:antialiased;font-size:15px}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+  header.top{border-bottom:2px solid var(--ink);padding:22px 0 16px}
+  .brandrow{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .brand{font-weight:700;letter-spacing:-.02em;font-size:30px;display:flex;align-items:baseline;gap:13px}
+  .brand .glyph{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:16px;color:var(--jade);
+    letter-spacing:.3em;border:1.5px solid var(--jade);border-radius:3px;padding:3px 7px;transform:translateY(-3px)}
+  .tag{font-family:ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--mut)}
+  .lede{margin-top:8px;color:var(--mut);font-size:14px;max-width:680px}
+
+  .stage{padding:20px 0 60px}
+  .btn{border:1.5px solid var(--jade);background:var(--jade);color:#fff;font-family:inherit;
+    font-weight:700;font-size:14px;padding:8px 16px;border-radius:6px;cursor:pointer}
+  .btn.ghost{background:transparent;color:var(--jade)}
+  .btn.ghost.light{border-color:rgba(255,255,255,.55);color:#fff;background:transparent}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+
+  /* model status */
+  .modelbar{display:flex;align-items:center;gap:12px;margin:16px 0;padding:12px 16px;
+    background:var(--paper-2);border:1px solid var(--line);border-radius:8px}
+  .status-dot{width:10px;height:10px;border-radius:50%;background:var(--mut);flex:none}
+  .status-dot.ready{background:var(--jade)}
+  .status-dot.loading{background:var(--amber);animation:pulse 1.5s infinite}
+  .status-dot.error{background:var(--rust)}
+  @keyframes pulse{0%{opacity:1}50%{opacity:.3}100%{opacity:1}}
+
+  .controls{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap;margin:18px 0 4px;
+    padding:16px 18px;background:var(--paper-2);border:1px solid var(--line);border-radius:8px}
+  .ctl{display:flex;flex-direction:column;gap:7px}
+  .ctl label{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--mut);font-family:ui-monospace,monospace}
+  .switch{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .switch button{border:0;background:transparent;padding:7px 12px;cursor:pointer;font-family:inherit;font-size:13px;color:var(--mut)}
+  .switch button.on{background:var(--jade);color:#fff;font-weight:700}
+  .nchips{display:flex;gap:6px}
+  .nchips button{width:34px;height:34px;border:1px solid var(--line);background:#fff;border-radius:6px;
+    cursor:pointer;font-family:ui-monospace,monospace;font-size:14px;color:var(--mut)}
+  .nchips button.on{background:var(--jade);color:#fff;border-color:var(--jade);font-weight:700}
+  .nchips button.edge{background:var(--jade-deep);color:#fff;border-color:var(--jade-deep)}
+  input[type=range]{accent-color:var(--jade)}
+  .val{font-weight:700;font-size:14px}
+
+  .files{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 0}
+  .chip{font-family:ui-monospace,monospace;font-size:12px;background:var(--paper-2);
+    border:1px solid var(--line);border-radius:20px;padding:5px 12px;color:var(--jade-deep)}
+  .chip .x{color:var(--mut);margin-left:8px;cursor:pointer}
+  .chip .x:hover{color:var(--rust)}
+
+  .summary{display:flex;margin:22px 0 8px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .summary .cell{flex:1;padding:15px 18px;border-right:1px solid var(--line)}
+  .summary .cell:last-child{border-right:0}
+  .summary .n{font-size:28px;font-weight:700;line-height:1}
+  .summary .n.flag{color:var(--rust)}
+  .summary .k{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--mut);margin-top:6px;font-family:ui-monospace,monospace}
+
+  .progress{height:6px;background:var(--paper-2);border-radius:4px;overflow:hidden;margin:14px 0}
+  .progress .bar{height:100%;width:0;background:var(--jade);transition:width .2s}
+
+  .filterbar{display:flex;gap:12px;align-items:center;margin:22px 0 12px;flex-wrap:wrap}
+  .filterbar input[type=text]{flex:1;min-width:220px;padding:9px 12px;border:1px solid var(--line);
+    border-radius:6px;font-family:inherit;font-size:14px;background:#fff;color:var(--ink)}
+  .hint{font-size:13px;color:var(--mut)}
+
+  .editbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:16px;margin:16px 0;
+    padding:12px 18px;background:var(--jade-deep);color:#fff;border-radius:8px;box-shadow:0 6px 18px var(--shadow)}
+  .editbar .st{flex:1;display:flex;align-items:center;gap:10px;font-size:14px}
+  .editbar .btn{background:#fff;color:var(--jade-deep);border-color:#fff}
+
+  .group{border:1px solid var(--line);border-radius:9px;margin-bottom:14px;background:var(--paper-2);overflow:hidden}
+  .group-head{display:flex;align-items:center;gap:13px;padding:13px 18px;cursor:pointer;border-left:4px solid var(--rust)}
+  .group-head .chev{color:var(--rust);font-size:13px;width:13px;flex:none}
+  .group-head .badge{background:var(--rust);color:#fff;border-radius:20px;padding:3px 10px;
+    font-family:ui-monospace,monospace;font-size:11px;font-weight:700}
+  .group-head .src{font-weight:700;font-size:16px}
+  .group-head .meta{margin-left:auto;font-family:ui-monospace,monospace;font-size:12px;color:var(--mut);white-space:nowrap}
+  .variants{border-top:1px solid var(--line);background:#fff}
+  .vargroup{border-bottom:1px solid var(--line)}
+  .vargroup:last-child{border-bottom:0}
+  .varhead{display:flex;align-items:center;gap:12px;padding:10px 18px;background:var(--paper);border-bottom:1px solid var(--paper-2)}
+  .vartag{font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--jade-deep);font-weight:700}
+  .varspan{flex:1;font-size:15px;font-weight:600;direction:rtl;text-align:right}
+  .cnt{font-family:ui-monospace,monospace;font-size:12px;color:var(--mut)}
+  .usebtn{border:1px solid var(--jade);background:transparent;color:var(--jade-deep);font-family:inherit;
+    font-size:12px;padding:5px 11px;border-radius:5px;cursor:pointer}
+  .usebtn:hover{background:var(--jade);color:#fff}
+  .llmbtn{border:1px solid var(--amber);background:transparent;color:var(--amber);font-family:inherit;
+    font-size:12px;padding:5px 11px;border-radius:5px;cursor:pointer}
+  .llmbtn:hover{background:var(--amber);color:#fff}
+
+  .seg{display:flex;gap:14px;align-items:flex-start;padding:10px 18px 10px 26px;border-bottom:1px solid var(--paper-2)}
+  .seg:last-child{border-bottom:0}
+  .seg-src{flex:1;font-size:13.5px;color:var(--mut);padding-top:7px}
+  .seg-tgt{flex:1.2;font-family:inherit;font-size:15px;line-height:1.5;border:1px solid var(--line);
+    border-radius:6px;padding:7px 10px;background:#fff;color:var(--ink);resize:none;overflow:hidden;min-height:38px;direction:rtl}
+  .seg-tgt:focus{outline:2px solid var(--jade);border-color:var(--jade)}
+  .seg-meta{width:170px;font-family:ui-monospace,monospace;font-size:10.5px;color:var(--mut);
+    padding-top:9px;display:flex;align-items:center;gap:8px;justify-content:flex-end;text-align:right}
+  .seg.changed .seg-tgt{border-color:var(--amber);background:#fffaf2}
+  .revert-seg{border:0;background:transparent;color:var(--mut);cursor:pointer;font-family:ui-monospace,monospace;font-size:10.5px;padding:0;visibility:hidden}
+  .seg.changed .revert-seg{visibility:visible}
+  .revert-seg:hover{color:var(--rust)}
+  .spanhint{font-family:ui-monospace,monospace;font-size:10px;color:var(--jade);direction:rtl}
+
+  .llmout{padding:8px 18px 12px 26px;font-size:13px;color:var(--jade-deep);background:#fbfaf5}
+  .llmout.bad{color:var(--rust)}
+  .empty{text-align:center;padding:60px 20px;color:var(--mut)}
+  .empty .big{font-size:40px;margin-bottom:8px}
+  .hidden{display:none!important}
+  footer{border-top:1px solid var(--line);margin-top:36px;padding:16px 0 36px;color:var(--mut);
+    font-size:12px;font-family:ui-monospace,monospace}
+
+  details.llmcfg{margin:14px 0;border:1px solid var(--line);border-radius:8px;background:var(--paper-2);padding:0 16px}
+  details.llmcfg summary{cursor:pointer;padding:12px 0;font-size:13px;color:var(--jade-deep);font-weight:700}
+  details.llmcfg .body{padding:0 0 14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  details.llmcfg input{padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-family:ui-monospace,monospace;font-size:12px;background:#fff}
+  details.llmcfg .f{display:flex;flex-direction:column;gap:5px}
+  details.llmcfg .f label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--mut);font-family:ui-monospace,monospace}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <div class="brandrow">
+    <div class="brand"><span class="glyph">ALIGN</span>Concord</div>
+    <div class="tag">neural word-alignment · EN→AR · runs locally</div>
+  </div>
+  <p class="lede">Finds source phrases translated inconsistently — by aligning each English n-gram to the exact Arabic span that translates it, so only genuine term inconsistencies are flagged, not differences elsewhere in the segment.</p>
+</div></header>
+
+<div class="wrap stage">
+
+  <div class="modelbar">
+    <span class="status-dot" id="mdot"></span>
+    <span id="mtext" style="flex:1">Alignment model not loaded.</span>
+    <div class="switch" id="modelpick">
+      <button data-v="bert" class="on">mBERT (faster)</button>
+      <button data-v="xlmr">XLM-R (accuracy)</button>
+    </div>
+    <button class="btn" id="loadmodel">Load model</button>
+  </div>
+
+  <div class="row">
+    <button class="btn" id="openfiles">Open XLIFF files…</button>
+    <span class="hint" id="filehint">Select one or more .xlf / .xliff files.</span>
+  </div>
+  <div id="filechips" class="files"></div>
+
+  <details class="llmcfg">
+    <summary>Optional: connect an LLM for semantic verdicts</summary>
+    <div class="body">
+      <div class="f"><label>Base URL</label><input id="llm-url" size="32" placeholder="https://api.anthropic.com"></div>
+      <div class="f"><label>API key</label><input id="llm-key" size="24" type="password" placeholder="sk-…"></div>
+      <div class="f"><label>Model</label><input id="llm-model" size="20" placeholder="claude-…"></div>
+      <button class="btn ghost" id="llm-test">Connect</button>
+      <span class="hint" id="llm-status"></span>
+    </div>
+  </details>
+
+  <div class="controls" id="controls">
+    <div class="ctl">
+      <label>N-gram length</label>
+      <div class="row">
+        <div class="switch" id="nmode"><button data-v="range" class="on">Range</button><button data-v="exact">Exact</button></div>
+        <div class="nchips" id="nchips">
+          <button data-n="1">1</button><button data-n="2">2</button><button data-n="3">3</button>
+          <button data-n="4">4</button><button data-n="5">5</button><button data-n="6">6</button>
+        </div>
+        <span class="val" id="nlabel">2–3 words</span>
+      </div>
+    </div>
+    <div class="ctl"><label>Stopwords</label>
+      <div class="switch" id="swmode"><button data-v="off">Off</button><button data-v="trim" class="on">Trim edges</button><button data-v="strict">Strict</button></div>
+    </div>
+    <div class="ctl"><label>Min occurrences</label>
+      <div class="row"><input type="range" id="minocc" min="2" max="20" value="2"><span class="val" id="occlabel">2×</span></div>
+    </div>
+    <div class="ctl"><label>Arabic normalization</label>
+      <div class="switch" id="taamode"><button data-v="on" class="on">Fold ة→ه</button><button data-v="off">Keep</button></div>
+    </div>
+    <div class="ctl" style="margin-left:auto"><label>&nbsp;</label>
+      <button class="btn" id="run" disabled>Analyze</button>
+    </div>
+  </div>
+
+  <div class="progress hidden" id="progress"><div class="bar" id="progbar"></div></div>
+
+  <div class="summary hidden" id="summary">
+    <div class="cell"><div class="n" id="s-seg">0</div><div class="k">Segments</div></div>
+    <div class="cell"><div class="n" id="s-files">0</div><div class="k">Files</div></div>
+    <div class="cell"><div class="n flag" id="s-flag">0</div><div class="k">Inconsistent terms</div></div>
+  </div>
+
+  <div class="filterbar hidden" id="filterbar">
+    <input type="text" id="filter" placeholder="Filter by source or Arabic span…">
+    <button class="btn ghost" id="toggleall" data-state="collapsed">Expand all</button>
+    <span class="hint" id="showing"></span>
+  </div>
+
+  <div class="editbar hidden" id="editbar">
+    <span class="st"><span id="editcount"></span></span>
+    <button class="btn ghost light" id="revertall">Revert all</button>
+    <button class="btn" id="exportbtn">Export corrected XLIFF</button>
+  </div>
+
+  <div id="results"></div>
+</div>
+
+<footer><div class="wrap">Concord · aligned-span consistency · alignment + files stay on this machine.</div></footer>
+
+<script src="app.js"></script>
+</body>
+</html>
