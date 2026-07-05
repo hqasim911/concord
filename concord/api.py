@@ -294,7 +294,7 @@ class ConcordAPI:
         ]}
 
     # ---- local verifier (MT back-translation | LaBSE embeddings) ----
-    def verify_all(self, method: str = "mt") -> dict:
+    def verify_all(self, method: str = "labse") -> dict:
         """Verify every inconsistent flag with a local model. method='mt'
         back-translates variants (opus-mt-ar-en); method='labse' compares LaBSE
         embeddings. Loads the chosen model on first use. Returns per-flag

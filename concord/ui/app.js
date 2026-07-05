@@ -389,7 +389,7 @@ $("#ph-k").addEventListener("click", async ()=>{
 });
 
 // ---------- local verifier: back-translation | LaBSE ----------
-let verifierChoice="mt";
+let verifierChoice="labse";
 $("#verifier").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
   $("#verifier").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); verifierChoice=b.dataset.v;
 }));

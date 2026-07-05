@@ -122,11 +122,12 @@ python run.py
   خط اساس جدول زمني).
 - **Local verifier** — **Verify all** gives an offline second opinion on each
   inconsistent flag, with two backends (toggle):
+  - **LaBSE** (setu4993/LaBSE, ~1.8GB) — *default*: compares multilingual
+    sentence embeddings of the term and each variant — no translation step, so
+    it degrades less on short terms.
   - **Back-translation** (opus-mt-ar-en, ~300MB): translates each variant back
-    to English; agreeing ⇒ likely acceptable, diverging ⇒ inconsistent.
-  - **LaBSE** (setu4993/LaBSE, ~1.8GB): compares multilingual sentence
-    embeddings of the term and each variant — no translation step, so it
-    degrades less on short terms.
+    to English; agreeing ⇒ likely acceptable, diverging ⇒ inconsistent. Lighter
+    download and more human-readable, but noisier on short spans.
   Both are heuristic/advisory, run locally, and need no API key.
 
 ## Headless test (no GUI)
