@@ -152,6 +152,7 @@
     <div class="switch" id="backendpick">
       <button data-v="simalign" class="on">SimAlign</button>
       <button data-v="awesome">awesome-align</button>
+      <button data-v="ensemble">Ensemble</button>
     </div>
     <span class="picklabel">Model:</span>
     <div class="switch" id="modelpick">
@@ -170,6 +171,12 @@
   <details class="llmcfg">
     <summary>Optional: connect an LLM for semantic verdicts</summary>
     <div class="body">
+      <div class="f"><label>Provider</label>
+        <select id="llm-provider">
+          <option value="auto">Auto-detect</option>
+          <option value="anthropic">Anthropic (/v1/messages)</option>
+          <option value="openai">OpenAI-compatible</option>
+        </select></div>
       <div class="f"><label>Base URL</label><input id="llm-url" size="32" placeholder="https://api.anthropic.com"></div>
       <div class="f"><label>API key</label><input id="llm-key" size="24" type="password" placeholder="sk-…"></div>
       <div class="f"><label>Model</label><input id="llm-model" size="20" placeholder="claude-…"></div>
@@ -202,6 +209,15 @@
     <div class="ctl"><label>Article / clitic folding</label>
       <div class="switch" id="clitmode"><button data-v="on" class="on">Strip الـ</button><button data-v="off">Keep</button></div>
     </div>
+    <div class="ctl"><label>Merge near-duplicates</label>
+      <div class="switch" id="clustermode"><button data-v="on" class="on">On</button><button data-v="off">Off</button></div>
+    </div>
+    <div class="ctl"><label>Min variant count</label>
+      <div class="row"><input type="range" id="minvar" min="1" max="10" value="1"><span class="val" id="minvarlabel">1×</span></div>
+    </div>
+    <div class="ctl"><label>Direction</label>
+      <div class="switch" id="revmode"><button data-v="off" class="on">EN→AR</button><button data-v="on">+ AR→EN</button></div>
+    </div>
     <div class="ctl" style="margin-left:auto"><label>&nbsp;</label>
       <button class="btn" id="run" disabled>Analyze</button>
     </div>
@@ -213,7 +229,18 @@
     <div class="cell"><div class="n" id="s-seg">0</div><div class="k">Segments</div></div>
     <div class="cell"><div class="n" id="s-files">0</div><div class="k">Files</div></div>
     <div class="cell"><div class="n flag" id="s-flag">0</div><div class="k">Inconsistent terms</div></div>
+    <div class="cell"><div class="n" id="s-rev">0</div><div class="k">Overloaded spans</div></div>
+    <div class="cell"><div class="n" id="s-ph">0</div><div class="k" id="ph-k" style="cursor:pointer">Placeholder issues ▸</div></div>
   </div>
+
+  <div class="row hidden" id="toolsrow" style="margin:14px 0">
+    <div class="switch" id="viewmode"><button data-v="fwd" class="on">Forward EN→AR</button><button data-v="rev">Reverse AR→EN</button></div>
+    <button class="btn ghost" id="loadgloss">Load glossary…</button>
+    <button class="btn ghost" id="checkgloss">Check adherence</button>
+    <button class="btn ghost hidden" id="llmall">LLM-check all</button>
+    <span class="hint" id="toolshint"></span>
+  </div>
+  <div id="auxout"></div>
 
   <div class="filterbar hidden" id="filterbar">
     <input type="text" id="filter" placeholder="Filter by source or Arabic span…">

@@ -218,3 +218,33 @@ def strip_edge_punct_span(span: str) -> str:
     toks = [strip_edge_punct(t) for t in toks]
     toks = [t for t in toks if t]
     return " ".join(toks)
+
+
+# ---------------------------------------------------------------------------
+# String distance (for clustering near-duplicate spans)
+# ---------------------------------------------------------------------------
+def edit_distance(a: str, b: str) -> int:
+    """Levenshtein distance (iterative, O(len(a)*len(b)) time, O(len(b)) space)."""
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(
+                prev[j] + 1,          # deletion
+                cur[j - 1] + 1,       # insertion
+                prev[j - 1] + (ca != cb),  # substitution
+            ))
+        prev = cur
+    return prev[-1]
+
+
+def norm_edit_distance(a: str, b: str) -> float:
+    """Edit distance scaled to [0, 1] by the longer string length."""
+    m = max(len(a), len(b))
+    return 0.0 if m == 0 else edit_distance(a, b) / m

@@ -1,0 +1,9 @@
+# Hand-aligned EN->AR gold set for alignment evaluation.
+# Format per line:  <EN sentence> \t <AR sentence> \t <links>
+# links: "i-j" = sure alignment, "i?j" = possible (looser) alignment.
+# Token indices are 0-based over whitespace tokens, in file order.
+save the file	احفظ الملف	0-0 2-1 1?1
+open the settings menu	افتح قائمة الإعدادات	0-0 3-1 2-2 1?2
+the user guide	دليل المستخدم	2-0 1-1 0?1
+click the cancel button	انقر على زر الإلغاء	0-0 3-2 2-3
+please save your changes	يرجى حفظ تغييراتك	0-0 1-1 3-2 2?2

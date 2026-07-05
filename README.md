@@ -19,16 +19,20 @@ Concord aligns the n-gram to **انقر على زر حفظ** in both → correct
 ```
 concord/
   core/
-    aligner.py    # swappable alignment: SimAlign | awesome-align | Mock | Caching
-    textutil.py   # Arabic normalization, tokenization, n-gram extraction
-    xliff.py      # XLIFF 1.2 / 2.0 parse + round-trip editing (lxml)
-    engine.py     # the consistency engine (n-gram -> aligned span -> grouping)
-    llm.py        # optional, provider-agnostic LLM verdicts
+    aligner.py    # SimAlign | awesome-align | Ensemble | Mock | Caching
+    textutil.py   # Arabic normalize + light-stem, n-grams, span trim, edit dist
+    xliff.py      # XLIFF 1.2 / 2.0 parse, placeholder QA, safe round-trip edit
+    engine.py     # consistency engine: forward + reverse, clustering, scoring
+    glossary.py   # termbase (CSV/TBX) adherence checking
+    llm.py        # optional LLM verdicts (OpenAI-compatible + native Anthropic)
   api.py          # pywebview backend bridge
   ui/             # desktop frontend (index.html + app.js)
   app.py          # entry point
 run.py
 cli_test.py       # headless engine test (no GUI)
+eval_alignment.py # alignment precision/recall/AER harness
+eval/gold.tsv     # hand-aligned gold set
+sample-test.xlf   # sample fixture
 requirements.txt
 ```
 
@@ -78,14 +82,41 @@ Notes:
 python run.py
 ```
 
-1. **Load model** — pick a backend (SimAlign or awesome-align) and a base model
-   (mBERT faster, XLM-R often better on Arabic), click Load.
+1. **Load model** — pick a backend (**SimAlign**, **awesome-align**, or
+   **Ensemble** = the intersection of both for higher precision) and a base
+   model (mBERT faster, XLM-R often better on Arabic), click Load.
 2. **Open XLIFF files** — select one or many `.xlf` / `.xliff`.
-3. Set **n-gram length**, **stopword mode**, **min occurrences**, **Arabic normalization**.
-4. **Analyze** — progress bar shows alignment over all segments.
-5. Review flagged terms; each shows the distinct **aligned Arabic spans**. Edit any
-   target field (RTL), use **Use for all** to standardize, **↺** to revert.
-6. **Export corrected XLIFF** — writes one `*-corrected.xlf` per edited file.
+3. Set **n-gram length**, **stopwords**, **min occurrences**, **Arabic
+   normalization**, **article/clitic folding**, **near-duplicate merging**,
+   **min variant count**, and **direction** (EN→AR, or also AR→EN).
+4. **Analyze** — each flag shows its distinct aligned spans and a **% split**
+   inconsistency score (higher = more evenly divided). Edit targets (RTL),
+   **Use for all** to standardize, **↺** to revert.
+5. **Tools row** — switch to the **Reverse** view (over-loaded Arabic spans),
+   **Load glossary** + **Check adherence**, click **Placeholder issues** to
+   list source/target placeholder mismatches, or **LLM-check all**.
+6. **Export corrected XLIFF** — writes one `*-corrected.xlf` per edited file
+   (reports if any inline tags had to be dropped).
+
+## Accuracy & QA features
+
+- **Article / clitic folding** — collapses الزر / بالزر / وبالزر → زر so
+  grammatical variation isn't mistaken for inconsistency (conservative: only
+  article-bearing prefixes).
+- **Span-outlier trimming** — a single mis-aligned link can't balloon a span
+  to swallow unrelated words; only the densest aligned cluster is kept.
+- **Near-duplicate clustering + score** — spans within a small edit distance
+  merge before counting distinctness; each flag gets an entropy-based score so
+  genuine 50/50 splits rank above "one dominant term + noise".
+- **Reverse check** — flags one Arabic span used for several English terms
+  (over-loaded / ambiguous target term). Enable "+ AR→EN".
+- **Glossary adherence** — load a termbase (CSV `source,target` or basic TBX)
+  and flag segments that don't use the approved translation.
+- **Placeholder QA** — reports segments whose target placeholder set (`%s`,
+  `{0}`, `<ph/>`, …) differs from the source's. Editing no longer silently
+  drops inline tags.
+- **Ensemble aligner** — `build_aligner("ensemble")` intersects SimAlign and
+  awesome-align.
 
 ## Headless test (no GUI)
 
@@ -94,34 +125,51 @@ python cli_test.py path/to/file.xlf          # heuristic mock aligner (fast, rou
 python cli_test.py path/to/file.xlf --real   # real SimAlign (downloads model)
 ```
 
+## Alignment evaluation (AER)
+
+Measure alignment quality against the gold set before trusting a backend:
+
+```bash
+python eval_alignment.py                      # heuristic baseline
+python eval_alignment.py --real               # SimAlign (mBERT)
+python eval_alignment.py --backend awesome    # awesome-align
+python eval_alignment.py --backend ensemble   # SimAlign ∩ awesome-align
+```
+
+Reports precision / recall / **AER** (lower is better). On the bundled gold
+set, SimAlign scores ~0.25 AER vs ~0.61 for the heuristic baseline.
+
 ## Optional LLM layer
 
-In the app, expand **"connect an LLM"** and paste a base URL, API key, and model.
-The client speaks the OpenAI-compatible `/v1/chat/completions` shape, which works
-with OpenAI, Together, Groq, OpenRouter, local Ollama (`http://localhost:11434/v1`),
-and similar. Per flagged group, **LLM check** asks for a verdict
-(inconsistent vs. acceptable variant) and a preferred translation.
+In the app, expand **"connect an LLM"**, choose a **provider**, and paste a base
+URL, API key, and model.
 
-> Note: Anthropic's native API uses a different request shape (`/v1/messages`).
-> To use Claude directly, point the base URL at an OpenAI-compatible proxy, or
-> tell me and I'll add a native Anthropic adapter to `llm.py`.
+- **OpenAI-compatible** (`/v1/chat/completions`) — OpenAI, Together, Groq,
+  OpenRouter, local Ollama (`http://localhost:11434/v1`), and most proxies.
+- **Anthropic** — native `/v1/messages`; point the base URL at
+  `https://api.anthropic.com` and use Claude directly (no proxy needed).
+
+Auto-detect picks the shape from the base URL. Per flagged group, **LLM check**
+asks for a verdict (inconsistent vs. acceptable variant) and a preferred
+translation; **LLM-check all** runs the whole batch concurrently.
 
 ## Performance notes
 
 - Neural alignment is the slow step. mBERT on CPU handles low-thousands of
   segments in a few minutes; XLM-R is slower but sharper.
-- Alignments are cached per unique segment, so re-analyzing with a different
-  n-gram range does **not** re-run the model — it's near-instant.
+- Each **unique** sentence pair is aligned only once per run (translation
+  memories repeat heavily), and alignments are cached, so re-analyzing with
+  different n-gram / normalization settings is near-instant.
 - A CUDA GPU is used automatically if `torch` sees one.
 
 ## Swapping the aligner
 
-`build_aligner("simalign", model="bert")` is the default. Two neural backends
-ship today — `"simalign"` and `"awesome"` (the awesome-align extraction method,
-implemented directly on `transformers`; no extra dependency). Both accept
-`model="bert"`/`"xlmr"`, or pass a full Hugging Face id — e.g. a fine-tuned
-awesome-align checkpoint — for better accuracy.
+`build_aligner("simalign", model="bert")` is the default. Backends: `"simalign"`,
+`"awesome"` (the awesome-align extraction method implemented directly on
+`transformers`; no extra dependency), and `"ensemble"` (intersection of both for
+higher precision). Each accepts `model="bert"`/`"xlmr"`, or a full Hugging Face
+id — e.g. a fine-tuned awesome-align checkpoint — for better accuracy.
 
-The `Aligner` interface in `aligner.py` is one method
-(`align(src_tokens, tgt_tokens) -> [(i,j)]`), so an API-based aligner can drop
-in without touching the engine.
+The `Aligner` interface in `aligner.py` is `align(src, tgt) -> [(i,j)]` plus an
+optional `align_batch(pairs)`, so an API-based or batching aligner can drop in
+without touching the engine.

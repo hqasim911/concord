@@ -27,6 +27,8 @@ class ConcordAPI:
         self._seg_by_sid: Dict[str, Segment] = {}
         self._edits: Dict[str, str] = {}       # sid -> new target
         self._flags = []
+        self._reverse = []
+        self._glossary = []
         self._llm_cfg: Optional[llm_mod.LLMConfig] = None
         self._model_kind = "simalign"
         self._model_name = "bert"
@@ -116,6 +118,9 @@ class ConcordAPI:
                     min_occurrences=int(cfg.get("min_occurrences", 2)),
                     fold_taa=bool(cfg.get("fold_taa", True)),
                     strip_clitics=bool(cfg.get("strip_clitics", True)),
+                    cluster_spans=bool(cfg.get("cluster_spans", True)),
+                    cluster_max_dist=float(cfg.get("cluster_max_dist", 0.2)),
+                    min_variant_count=int(cfg.get("min_variant_count", 1)),
                 )
                 engine = ConsistencyEngine(self._aligner, ec)
 
@@ -123,10 +128,16 @@ class ConcordAPI:
                     self._emit("analyze-progress", {"done": done, "total": total})
                 flags = engine.analyze(self._segments, progress=prog)
                 self._flags = flags
+                reverse = []
+                if cfg.get("reverse"):
+                    reverse = engine.analyze_reverse(self._segments)
+                self._reverse = reverse
                 self._emit("analyze-done", {
                     "segments": len(self._segments),
                     "files": len(self._files),
                     "flags": self._flags_to_json(flags),
+                    "reverse": self._reverse_to_json(reverse),
+                    "placeholder_issues": self._placeholder_count(),
                 })
             except Exception as e:
                 self._emit("analyze-error", {"error": str(e),
@@ -139,6 +150,7 @@ class ConcordAPI:
         for f in flags:
             out.append({
                 "ngram": f.ngram, "distinct": f.distinct, "total": f.total,
+                "score": round(f.score, 3),
                 "variants": [{
                     "span": v.span, "count": v.count,
                     "occurrences": [{
@@ -150,6 +162,27 @@ class ConcordAPI:
                 } for v in f.variants],
             })
         return out
+
+    def _reverse_to_json(self, rflags) -> list:
+        out = []
+        for f in rflags:
+            out.append({
+                "span": f.span, "distinct": f.distinct, "total": f.total,
+                "score": round(f.score, 3),
+                "uses": [{
+                    "term": u.term, "count": u.count,
+                    "occurrences": [{
+                        "sid": o.sid, "file": o.file, "unit": o.unit,
+                        "source": o.source, "span": o.span,
+                        "target": self._edits.get(o.sid, o.target),
+                    } for o in u.occurrences],
+                } for u in f.uses],
+            })
+        return out
+
+    def _placeholder_count(self) -> int:
+        from .core.xliff import placeholder_issues
+        return len(placeholder_issues(self._segments))
 
     # ---- editing ----
     def set_edit(self, sid: str, text: str) -> dict:
@@ -187,10 +220,13 @@ class ConcordAPI:
 
         # apply edits to DOM
         dirty_files = set()
+        dropped_tags = 0
         for sid, text in self._edits.items():
             seg = self._seg_by_sid.get(sid)
             if seg:
-                set_target_text(seg, text)
+                res = set_target_text(seg, text)
+                if res.get("dropped_tags"):
+                    dropped_tags += 1
                 dirty_files.add(seg.file)
 
         written = []
@@ -202,14 +238,17 @@ class ConcordAPI:
             with open(out_path, "wb") as fh:
                 fh.write(serialize(xf))
             written.append(out_name)
-        return {"ok": True, "written": written, "dir": out_dir}
+        return {"ok": True, "written": written, "dir": out_dir,
+                "dropped_tags": dropped_tags}
 
     # ---- LLM ----
-    def set_llm(self, base_url: str, api_key: str, model: str) -> dict:
+    def set_llm(self, base_url: str, api_key: str, model: str,
+                provider: str = "auto") -> dict:
         if not (base_url and api_key and model):
             self._llm_cfg = None
             return {"ok": False, "msg": "Missing fields."}
-        self._llm_cfg = llm_mod.LLMConfig(base_url, api_key, model)
+        self._llm_cfg = llm_mod.LLMConfig(base_url, api_key, model,
+                                          provider=provider)
         res = llm_mod.test_connection(self._llm_cfg)
         if not res.get("ok"):
             self._llm_cfg = None
@@ -219,3 +258,51 @@ class ConcordAPI:
         if not self._llm_cfg:
             return {"error": "LLM not configured."}
         return llm_mod.judge_group(self._llm_cfg, ngram, spans)
+
+    def llm_judge_all(self) -> dict:
+        """Run an LLM verdict over every current forward flag, concurrently."""
+        if not self._llm_cfg:
+            return {"error": "LLM not configured."}
+        items = [{"ngram": f.ngram, "spans": [v.span for v in f.variants]}
+                 for f in self._flags]
+        verdicts = llm_mod.judge_all(self._llm_cfg, items)
+        return {"verdicts": [
+            {"ngram": it["ngram"], **v} for it, v in zip(items, verdicts)
+        ]}
+
+    # ---- glossary / termbase ----
+    def load_glossary(self) -> dict:
+        from webview import OPEN_DIALOG
+        from .core import glossary as gl
+        paths = self._window.create_file_dialog(
+            OPEN_DIALOG, allow_multiple=False,
+            file_types=("Glossary (*.csv;*.tbx;*.xml)", "All files (*.*)"),
+        )
+        if not paths:
+            return {"ok": False, "entries": 0}
+        path = paths[0] if isinstance(paths, (list, tuple)) else paths
+        try:
+            self._glossary = gl.load_glossary(path)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        return {"ok": True, "entries": len(self._glossary)}
+
+    def check_glossary(self) -> dict:
+        from .core import glossary as gl
+        if not self._glossary:
+            return {"ok": False, "msg": "No glossary loaded."}
+        viols = gl.check_adherence(self._segments, self._glossary)
+        return {"ok": True, "count": len(viols), "violations": [{
+            "sid": v.sid, "file": v.file, "term": v.source_term,
+            "approved": v.approved, "source": v.segment_source,
+            "target": v.segment_target,
+        } for v in viols]}
+
+    # ---- placeholder QA ----
+    def placeholder_report(self) -> dict:
+        from .core.xliff import placeholder_issues
+        issues = placeholder_issues(self._segments)
+        return {"count": len(issues), "items": [{
+            "sid": s.sid, "file": s.file, "source": s.source,
+            "target": s.target, "src_ph": s.src_ph, "tgt_ph": s.tgt_ph,
+        } for s in issues]}

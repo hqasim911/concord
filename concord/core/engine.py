@@ -1,19 +1,25 @@
 """
 Consistency engine.
 
-For every English source n-gram, finds the Arabic span that translates it in
-each segment (via the aligner), then groups by n-gram and flags only when the
+Forward: for every English source n-gram, find the Arabic span that translates
+it in each segment (via the aligner), group by n-gram, and flag only when the
 ALIGNED SPANS genuinely differ — not when whole targets differ.
 
-This is the core improvement over whole-segment comparison.
+Reverse: also detect when one Arabic span is used to translate several distinct
+English n-grams (an over-loaded / ambiguous target term).
+
+Near-duplicate spans are clustered before counting distinctness, and each flag
+carries an inconsistency score (distribution entropy) for ranking.
 """
 
 from __future__ import annotations
+import math
 from dataclasses import dataclass, field
 from typing import List, Dict, Callable, Optional
 
 from .textutil import (
-    tokenize, ngrams_with_positions, target_span, DEFAULT_STOPWORDS,
+    tokenize, ngrams_with_positions, target_span, norm_edit_distance,
+    DEFAULT_STOPWORDS,
 )
 from .aligner import Aligner
 
@@ -42,6 +48,7 @@ class Variant:
 class Flag:
     ngram: str
     variants: List[Variant]
+    score: float = 0.0                # inconsistency score in [0, 1]
 
     @property
     def distinct(self):
@@ -53,6 +60,32 @@ class Flag:
 
 
 @dataclass
+class TermUse:
+    """One English n-gram that a given Arabic span was used to translate."""
+    term: str
+    occurrences: List[SpanOccurrence] = field(default_factory=list)
+
+    @property
+    def count(self):
+        return len(self.occurrences)
+
+
+@dataclass
+class ReverseFlag:
+    span: str                         # the Arabic span reused across terms
+    uses: List[TermUse]
+    score: float = 0.0
+
+    @property
+    def distinct(self):
+        return len(self.uses)
+
+    @property
+    def total(self):
+        return sum(u.count for u in self.uses)
+
+
+@dataclass
 class EngineConfig:
     nmin: int = 2
     nmax: int = 3
@@ -60,7 +93,36 @@ class EngineConfig:
     min_occurrences: int = 2
     fold_taa: bool = True
     strip_clitics: bool = True       # fold الـ / clitics off target terms
+    cluster_spans: bool = True       # merge near-duplicate spans
+    cluster_max_dist: float = 0.2    # normalized edit distance threshold
+    min_variant_count: int = 1       # drop variants seen fewer times (noise)
+    reverse: bool = False            # also compute reverse (over-loaded) flags
     stopwords: Optional[set] = None
+
+
+def _entropy_score(counts: List[int]) -> float:
+    """Normalized Shannon entropy of a count distribution, in [0, 1].
+    1.0 = perfectly even split (most inconsistent); ~0 = one dominant variant."""
+    total = sum(counts)
+    n = len(counts)
+    if total == 0 or n < 2:
+        return 0.0
+    ent = -sum((c / total) * math.log2(c / total) for c in counts if c)
+    return ent / math.log2(n)
+
+
+def _cluster_variants(variants: List[Variant], max_dist: float) -> List[Variant]:
+    """Greedily merge spans whose normalized edit distance <= max_dist. The
+    highest-count span in each cluster becomes its representative."""
+    merged: List[Variant] = []
+    for v in sorted(variants, key=lambda x: x.count, reverse=True):
+        for c in merged:
+            if norm_edit_distance(v.span, c.span) <= max_dist:
+                c.occurrences.extend(v.occurrences)
+                break
+        else:
+            merged.append(Variant(span=v.span, occurrences=list(v.occurrences)))
+    return merged
 
 
 class ConsistencyEngine:
@@ -68,35 +130,49 @@ class ConsistencyEngine:
         self.aligner = aligner
         self.cfg = config or EngineConfig()
 
-    def analyze(
-        self, segments, progress: Optional[Callable[[int, int], None]] = None
-    ) -> List[Flag]:
+    # ---- single pass over the corpus ----
+    def _collect(self, segments, progress):
         cfg = self.cfg
         stop = cfg.stopwords or DEFAULT_STOPWORDS
 
-        # ngram_key -> { span -> Variant }, and remember display form
-        groups: Dict[str, Dict[str, Variant]] = {}
-        display: Dict[str, str] = {}
-
-        total = len(segments)
-        for i, seg in enumerate(segments):
-            if progress and (i % 25 == 0 or i == total - 1):
-                progress(i + 1, total)
-
+        # Pass 1: tokenize + extract n-grams; gather UNIQUE sentence pairs so
+        # each distinct pair is aligned only once (translation memories repeat
+        # heavily). Alignment is the expensive step.
+        prepared = []                                 # (seg, src, tgt, ngs)
+        uniq = {}                                     # (tsrc, ttgt) -> (src, tgt)
+        for seg in segments:
             src_tokens = tokenize(seg.source)
             tgt_tokens = tokenize(seg.target)
             if not src_tokens or not tgt_tokens:
                 continue
-
             ngs = ngrams_with_positions(
                 src_tokens, cfg.nmin, cfg.nmax, cfg.stop_mode, stop
             )
             if not ngs:
                 continue
+            prepared.append((seg, src_tokens, tgt_tokens, ngs))
+            uniq.setdefault((tuple(src_tokens), tuple(tgt_tokens)),
+                            (src_tokens, tgt_tokens))
 
-            # one alignment per segment (cached); reused for all its n-grams
-            alignment = self.aligner.align(src_tokens, tgt_tokens)
+        # Align unique pairs in chunks (enables batching backends) w/ progress.
+        pairs = list(uniq.values())
+        align_map = {}
+        total = len(pairs)
+        for start in range(0, total, 32):
+            chunk = pairs[start:start + 32]
+            for (s, t), a in zip(chunk, self.aligner.align_batch(chunk)):
+                align_map[(tuple(s), tuple(t))] = a
+            if progress:
+                progress(min(start + 32, total), total)
+        if progress and total == 0:
+            progress(0, 0)
 
+        # Pass 2: build forward + reverse groups from the cached alignments.
+        groups: Dict[str, Dict[str, Variant]] = {}   # ngram -> span -> Variant
+        display: Dict[str, str] = {}                  # ngram key -> display
+        rev: Dict[str, Dict[str, TermUse]] = {}       # span -> ngram -> TermUse
+        for seg, src_tokens, tgt_tokens, ngs in prepared:
+            alignment = align_map[(tuple(src_tokens), tuple(tgt_tokens))]
             seen_in_seg = set()
             for disp, start, length in ngs:
                 key = disp.lower()
@@ -111,30 +187,68 @@ class ConsistencyEngine:
                     strip_clitics=cfg.strip_clitics,
                 )
                 if not span:
-                    # alignment produced nothing for this n-gram; skip rather
-                    # than guess (avoids spurious flags)
                     continue
 
-                gv = groups.setdefault(key, {})
-                var = gv.get(span)
-                if var is None:
-                    var = Variant(span=span)
-                    gv[span] = var
-                var.occurrences.append(SpanOccurrence(
+                occ = SpanOccurrence(
                     sid=seg.sid, file=seg.file, unit=seg.unit,
                     source=seg.source, target=seg.target, span=span,
-                ))
+                )
+                gv = groups.setdefault(key, {})
+                gv.setdefault(span, Variant(span=span)).occurrences.append(occ)
 
-        # build flags: >=2 distinct spans AND total >= min_occurrences
+                if cfg.reverse:
+                    rg = rev.setdefault(span, {})
+                    rg.setdefault(key, TermUse(term=disp)).occurrences.append(occ)
+
+        return groups, display, rev
+
+    def analyze(
+        self, segments, progress: Optional[Callable[[int, int], None]] = None
+    ) -> List[Flag]:
+        """Forward flags: one English n-gram -> multiple Arabic spans."""
+        cfg = self.cfg
+        groups, display, _ = self._collect(segments, progress)
+
         flags: List[Flag] = []
         for key, gv in groups.items():
-            if len(gv) < 2:
+            variants = list(gv.values())
+            if cfg.cluster_spans:
+                variants = _cluster_variants(variants, cfg.cluster_max_dist)
+            if cfg.min_variant_count > 1:
+                variants = [v for v in variants
+                            if v.count >= cfg.min_variant_count]
+            if len(variants) < 2:
                 continue
-            variants = sorted(gv.values(), key=lambda v: v.count, reverse=True)
-            total_occ = sum(v.count for v in variants)
-            if total_occ < cfg.min_occurrences:
+            variants.sort(key=lambda v: v.count, reverse=True)
+            if sum(v.count for v in variants) < cfg.min_occurrences:
                 continue
-            flags.append(Flag(ngram=display[key], variants=variants))
+            score = _entropy_score([v.count for v in variants])
+            flags.append(Flag(ngram=display[key], variants=variants, score=score))
 
-        flags.sort(key=lambda f: (f.distinct, f.total, len(f.ngram)), reverse=True)
+        flags.sort(key=lambda f: (f.score, f.total, f.distinct), reverse=True)
+        return flags
+
+    def analyze_reverse(
+        self, segments, progress: Optional[Callable[[int, int], None]] = None
+    ) -> List[ReverseFlag]:
+        """Reverse flags: one Arabic span -> multiple distinct English n-grams."""
+        prev = self.cfg.reverse
+        self.cfg.reverse = True
+        try:
+            _, _, rev = self._collect(segments, progress)
+        finally:
+            self.cfg.reverse = prev
+
+        flags: List[ReverseFlag] = []
+        for span, uses_by_term in rev.items():
+            uses = list(uses_by_term.values())
+            if len(uses) < 2:
+                continue
+            uses.sort(key=lambda u: u.count, reverse=True)
+            if sum(u.count for u in uses) < self.cfg.min_occurrences:
+                continue
+            score = _entropy_score([u.count for u in uses])
+            flags.append(ReverseFlag(span=span, uses=uses, score=score))
+
+        flags.sort(key=lambda f: (f.score, f.total, f.distinct), reverse=True)
         return flags

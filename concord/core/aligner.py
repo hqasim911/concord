@@ -27,6 +27,11 @@ class Aligner:
     def align(self, src_tokens: List[str], tgt_tokens: List[str]) -> Alignment:
         raise NotImplementedError
 
+    def align_batch(self, pairs) -> List[Alignment]:
+        """Align many (src_tokens, tgt_tokens) pairs. Default is sequential;
+        backends that support true batching or caching may override."""
+        return [self.align(s, t) for (s, t) in pairs]
+
 
 class SimAlignAligner(Aligner):
     """
@@ -179,9 +184,55 @@ class CachingAligner(Aligner):
         self._cache[k] = result
         return result
 
+    def align_batch(self, pairs) -> List[Alignment]:
+        """Compute each distinct uncached pair exactly once (dedups within the
+        batch AND against the cache), then cache the results."""
+        results: List[Alignment] = [None] * len(pairs)
+        miss_pair = {}                 # key -> (s, t)
+        miss_pos = {}                  # key -> [result indices]
+        for i, (s, t) in enumerate(pairs):
+            k = self._key(s, t)
+            cached = self._cache.get(k)
+            if cached is not None:
+                results[i] = cached
+            else:
+                miss_pair.setdefault(k, (s, t))
+                miss_pos.setdefault(k, []).append(i)
+        if miss_pair:
+            keys = list(miss_pair)
+            computed = self._inner.align_batch([miss_pair[k] for k in keys])
+            for k, a in zip(keys, computed):
+                self._cache[k] = a
+                for i in miss_pos[k]:
+                    results[i] = a
+        return results
+
     @property
     def inner_name(self) -> str:
         return self._inner.name
+
+
+class EnsembleAligner(Aligner):
+    """
+    Combine several aligners. mode='intersect' keeps only links all backends
+    agree on (higher precision — the awesome-align ∩ SimAlign recipe);
+    mode='union' keeps any link (higher recall).
+    """
+    name = "ensemble"
+
+    def __init__(self, aligners: List[Aligner], mode: str = "intersect"):
+        if not aligners:
+            raise ValueError("EnsembleAligner needs at least one aligner")
+        self._aligners = aligners
+        self._mode = mode
+
+    def align(self, src_tokens, tgt_tokens) -> Alignment:
+        sets = [set(a.align(src_tokens, tgt_tokens)) for a in self._aligners]
+        if self._mode == "union":
+            out = set().union(*sets)
+        else:
+            out = sets[0].intersection(*sets[1:])
+        return sorted(out)
 
 
 # Shorthands so the same UI bert/xlmr toggle drives every backend.
@@ -199,6 +250,13 @@ def build_aligner(kind: str = "simalign", **kwargs) -> Aligner:
         m = kwargs.get("model", "bert")
         kwargs["model"] = _AWESOME_MODEL_ALIASES.get(m, m)
         base = AwesomeAlignAligner(**kwargs)
+    elif kind == "ensemble":
+        m = kwargs.get("model", "bert")
+        mode = kwargs.get("mode", "intersect")
+        base = EnsembleAligner([
+            SimAlignAligner(model=m),
+            AwesomeAlignAligner(model=_AWESOME_MODEL_ALIASES.get(m, m)),
+        ], mode=mode)
     elif kind == "mock":
         base = MockAligner(kwargs.get("table"))
     else:

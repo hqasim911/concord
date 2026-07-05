@@ -86,13 +86,22 @@ let stripClitics=true;
 $("#clitmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
   $("#clitmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); stripClitics=b.dataset.v==="on";
 }));
+let clusterOn=true;
+$("#clustermode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+  $("#clustermode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); clusterOn=b.dataset.v==="on";
+}));
+let reverseOn=false;
+$("#revmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+  $("#revmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); reverseOn=b.dataset.v==="on";
+}));
+$("#minvar").addEventListener("input",e=>$("#minvarlabel").textContent=e.target.value+"×");
 $("#minocc").addEventListener("input",e=>$("#occlabel").textContent=e.target.value+"×");
 
 // ---------- analyze ----------
 $("#run").addEventListener("click", ()=>{
   $("#progress").classList.remove("hidden"); $("#progbar").style.width="0%";
   $("#run").disabled=true;
-  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics});
+  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics,cluster_spans:clusterOn,min_variant_count:+$("#minvar").value,reverse:reverseOn});
 });
 window.addEventListener("analyze-progress", e=>{
   const {done,total}=e.detail; $("#progbar").style.width=(100*done/total).toFixed(1)+"%";
@@ -101,9 +110,10 @@ window.addEventListener("analyze-error", e=>{
   $("#progress").classList.add("hidden"); $("#run").disabled=false;
   alert("Analysis error: "+e.detail.error);
 });
+let reverseFlags=[];
 window.addEventListener("analyze-done", e=>{
   $("#progress").classList.add("hidden"); $("#run").disabled=false;
-  const d=e.detail; flags=d.flags;
+  const d=e.detail; flags=d.flags; reverseFlags=d.reverse||[];
   // capture originals & current edits
   segOriginal.clear();
   flags.forEach(f=>f.variants.forEach(v=>v.occurrences.forEach(o=>{
@@ -112,6 +122,12 @@ window.addEventListener("analyze-done", e=>{
   })));
   $("#summary").classList.remove("hidden");
   $("#s-seg").textContent=d.segments; $("#s-files").textContent=d.files; $("#s-flag").textContent=flags.length;
+  $("#s-rev").textContent=reverseFlags.length; $("#s-ph").textContent=d.placeholder_issues||0;
+  $("#toolsrow").classList.remove("hidden");
+  $("#llmall").classList.toggle("hidden", !$("#llm-status").dataset.ok);
+  $("#auxout").innerHTML="";
+  viewMode="fwd";
+  $("#viewmode").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.v==="fwd"));
   render(); syncToggle(); refreshDirty();
 });
 
@@ -151,7 +167,7 @@ function render(){
       <div class="group-head" data-g="${gi}">
         <span class="chev">▸</span><span class="badge">${f.distinct} spans</span>
         <span class="src">${hl(f.ngram,q)}</span>
-        <span class="meta">${f.total} occ</span>
+        <span class="meta">${f.total} occ · ${Math.round((f.score||0)*100)}% split</span>
         <button class="llmbtn ${$("#llm-status").dataset.ok?'':'hidden'}" data-g="${gi}">LLM check</button>
       </div>
       <div class="variants hidden">${vars}</div>
@@ -242,10 +258,73 @@ $("#exportbtn").addEventListener("click", async ()=>{
 // ---------- LLM config ----------
 $("#llm-test").addEventListener("click", async ()=>{
   const url=$("#llm-url").value.trim(), key=$("#llm-key").value.trim(), model=$("#llm-model").value.trim();
+  const provider=$("#llm-provider").value;
   $("#llm-status").textContent="Testing…";
-  const r=await api().set_llm(url,key,model);
+  const r=await api().set_llm(url,key,model,provider);
   if(r.ok){ $("#llm-status").textContent="Connected ✓"; $("#llm-status").dataset.ok="1"; render(); }
   else { $("#llm-status").textContent="Failed: "+(r.error||r.msg||"check fields"); delete $("#llm-status").dataset.ok; }
+});
+
+// ---------- view switch: forward / reverse ----------
+let viewMode="fwd";
+$("#viewmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+  $("#viewmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on");
+  viewMode=b.dataset.v;
+  if(viewMode==="rev") renderReverse(); else { render(); syncToggle(); }
+}));
+function renderReverse(){
+  const host=$("#results"); $("#filterbar").classList.add("hidden");
+  if(!reverseFlags.length){ host.innerHTML=`<div class="empty"><div class="big">✓</div><strong>No overloaded spans</strong><div style="margin-top:6px">No Arabic span translates more than one English term.<br>(Enable "+ AR→EN" before analyzing to compute this.)</div></div>`; return; }
+  host.innerHTML=reverseFlags.map(f=>{
+    const uses=f.uses.map(u=>`<div class="vargroup"><div class="varhead">
+      <span class="vartag">Term</span><span class="varspan" dir="ltr">${esc(u.term)}</span><span class="cnt">${u.count}×</span></div></div>`).join("");
+    return `<div class="group"><div class="group-head">
+      <span class="badge">${f.distinct} terms</span>
+      <span class="varspan">${esc(f.span)}</span>
+      <span class="meta">${f.total} occ · ${Math.round((f.score||0)*100)}% split</span>
+    </div><div class="variants">${uses}</div></div>`;
+  }).join("");
+}
+
+// ---------- glossary ----------
+$("#loadgloss").addEventListener("click", async ()=>{
+  const r=await api().load_glossary();
+  $("#toolshint").textContent = r.ok ? `Glossary: ${r.entries} term(s) loaded.` : (r.error||"No glossary loaded.");
+});
+$("#checkgloss").addEventListener("click", async ()=>{
+  const r=await api().check_glossary();
+  const out=$("#auxout");
+  if(!r.ok){ out.innerHTML=`<div class="empty">${esc(r.msg||"Load a glossary first.")}</div>`; return; }
+  if(!r.count){ out.innerHTML=`<div class="empty"><div class="big">✓</div><strong>Glossary adherence: no violations</strong></div>`; return; }
+  out.innerHTML=`<div class="group"><div class="group-head"><span class="badge">${r.count}</span><span class="src">Glossary violations</span></div><div class="variants">`+
+    r.violations.map(v=>`<div class="seg"><div class="seg-src">${hl(v.source,v.term.toLowerCase())} <span style="color:var(--mut)">— expected <b>${esc(v.approved)}</b></span></div><div dir="rtl" style="margin-top:4px">${esc(v.target)}</div><div class="seg-meta"><span>${esc(v.sid)}</span></div></div>`).join("")+
+    `</div></div>`;
+});
+
+// ---------- placeholder report ----------
+$("#ph-k").addEventListener("click", async ()=>{
+  const r=await api().placeholder_report();
+  const out=$("#auxout");
+  if(!r.count){ out.innerHTML=`<div class="empty"><div class="big">✓</div><strong>No placeholder mismatches</strong></div>`; return; }
+  out.innerHTML=`<div class="group"><div class="group-head"><span class="badge">${r.count}</span><span class="src">Placeholder mismatches (source vs target)</span></div><div class="variants">`+
+    r.items.map(s=>`<div class="seg"><div class="seg-src">${esc(s.source)}</div><div dir="rtl" style="margin-top:4px">${esc(s.target)}</div><div class="seg-meta"><span>src: ${esc((s.src_ph||[]).join(", ")||"—")} · tgt: ${esc((s.tgt_ph||[]).join(", ")||"—")}</span></div></div>`).join("")+
+    `</div></div>`;
+});
+
+// ---------- LLM: judge all ----------
+$("#llmall").addEventListener("click", async ()=>{
+  $("#llmall").disabled=true; $("#toolshint").textContent="Asking the model about every flag…";
+  const r=await api().llm_judge_all();
+  $("#llmall").disabled=false;
+  if(r.error){ $("#toolshint").textContent="LLM error: "+r.error; return; }
+  const byNgram=new Map(r.verdicts.map(v=>[v.ngram,v]));
+  document.querySelectorAll("#results .group").forEach((g,i)=>{
+    const f=flags[i]; if(!f) return; const v=byNgram.get(f.ngram); if(!v) return;
+    let out=g.querySelector(".llmout"); if(out){ out.classList.remove("hidden","bad");
+      out.textContent = v.error ? ("LLM error: "+v.error) : `Verdict: ${v.verdict||"?"}${v.preferred?` · preferred: ${v.preferred}`:''}${v.reason?` — ${v.reason}`:''}`;
+      if(v.error||v.verdict==="inconsistent") out.classList.add("bad"); }
+  });
+  $("#toolshint").textContent=`LLM judged ${r.verdicts.length} flag(s).`;
 });
 
 // ---------- utils ----------
