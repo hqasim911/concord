@@ -29,6 +29,7 @@ class ConcordAPI:
         self._flags = []
         self._reverse = []
         self._glossary = []
+        self._mt = None
         self._llm_cfg: Optional[llm_mod.LLMConfig] = None
         self._model_kind = "simalign"
         self._model_name = "bert"
@@ -290,6 +291,30 @@ class ConcordAPI:
         return {"verdicts": [
             {"ngram": it["ngram"], **v} for it, v in zip(items, verdicts)
         ]}
+
+    # ---- local MT back-translation verifier ----
+    def mt_verify_all(self) -> dict:
+        """Back-translate every inconsistent flag's variants (loads the local
+        Marian ar->en model on first use) and return per-flag verdicts."""
+        from .core import mt as mt_mod
+        if not self._flags:
+            return {"error": "Run an analysis first."}
+        items = [{"ngram": f.ngram, "spans": [v.span for v in f.variants]}
+                 for f in self._flags if f.distinct >= 2]
+        if not items:
+            return {"verdicts": []}
+        try:
+            if self._mt is None:
+                self._log("Loading local MT model (opus-mt-ar-en, ~300MB)…")
+                self._mt = mt_mod.Translator()
+                self._log("MT model ready")
+            n = sum(len(it["spans"]) for it in items)
+            self._log(f"Back-translating {n} span(s) across {len(items)} flag(s)…")
+            verdicts = mt_mod.verify_all(self._mt, items)
+            self._log("MT verification done")
+            return {"verdicts": verdicts}
+        except Exception as e:
+            return {"error": str(e), "trace": traceback.format_exc()[-600:]}
 
     # ---- glossary / termbase ----
     def load_glossary(self) -> dict:

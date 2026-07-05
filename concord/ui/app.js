@@ -240,6 +240,7 @@ function render(){
       </div>
       <div class="variants hidden">${vars}</div>
       <div class="whyout hidden" data-g="${gi}"></div>
+      <div class="mtout hidden" data-g="${gi}"></div>
       <div class="llmout hidden" data-g="${gi}"></div>
     </div>`;
   }).join("");
@@ -385,6 +386,24 @@ $("#ph-k").addEventListener("click", async ()=>{
   out.innerHTML=`<div class="group"><div class="group-head"><span class="badge">${r.count}</span><span class="src">Placeholder mismatches (source vs target)</span></div><div class="variants">`+
     r.items.map(s=>`<div class="seg"><div class="seg-src">${esc(s.source)}</div><div dir="rtl" style="margin-top:4px">${esc(s.target)}</div><div class="seg-meta"><span>src: ${esc((s.src_ph||[]).join(", ")||"—")} · tgt: ${esc((s.tgt_ph||[]).join(", ")||"—")}</span></div></div>`).join("")+
     `</div></div>`;
+});
+
+// ---------- local MT: back-translation verify ----------
+$("#mtall").addEventListener("click", async ()=>{
+  $("#mtall").disabled=true; $("#toolshint").textContent="Loading MT model / back-translating (first run downloads ~300MB)…";
+  const r=await api().mt_verify_all();
+  $("#mtall").disabled=false;
+  if(r.error){ $("#toolshint").textContent="MT error: "+r.error; return; }
+  if(!r.verdicts.length){ $("#toolshint").textContent="No inconsistent flags to verify."; return; }
+  const by=new Map(r.verdicts.map(v=>[v.ngram,v]));
+  document.querySelectorAll("#results .group").forEach((g,i)=>{
+    const f=lastRendered[i]; if(!f) return; const v=by.get(f.ngram); if(!v) return;
+    const out=g.querySelector(".mtout"); if(!out) return;
+    out.classList.remove("hidden"); out.classList.toggle("bad", v.verdict==="inconsistent");
+    const bt=v.back.map(b=>`<span dir="rtl">${esc(b.span)}</span> → “${esc(b.en)}”`).join("<br>");
+    out.innerHTML=`<b>MT check: ${v.verdict}</b> · divergence ${v.max_distance} <span class="hint">(advisory — noisy on short spans)</span><div class="bt">${bt}</div>`;
+  });
+  $("#toolshint").textContent=`MT-verified ${r.verdicts.length} flag(s) — advisory only.`;
 });
 
 // ---------- LLM: judge all ----------

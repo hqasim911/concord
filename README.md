@@ -115,8 +115,15 @@ python run.py
 - **Placeholder QA** — reports segments whose target placeholder set (`%s`,
   `{0}`, `<ph/>`, …) differs from the source's. Editing no longer silently
   drops inline tags.
-- **Ensemble aligner** — `build_aligner("ensemble")` intersects SimAlign and
-  awesome-align.
+- **Ensemble aligner** — `build_aligner("ensemble", mode="intersect"|"union")`
+  combines SimAlign and awesome-align (union = higher recall).
+- **Containment merge** — folds a variant that is a contiguous fragment of a
+  longer variant into it, killing partial-alignment false flags (خط →
+  خط اساس جدول زمني).
+- **Local MT verifier** — **MT-verify all** back-translates each flagged Arabic
+  variant to English with a small local Marian model (opus-mt-ar-en); agreeing
+  back-translations ⇒ likely acceptable, diverging ⇒ inconsistent. Fully
+  offline. Advisory only — back-translation of short isolated spans is noisy.
 
 ## Headless test (no GUI)
 

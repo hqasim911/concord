@@ -18,3 +18,4 @@ torch>=2.0
 transformers>=4.30,<4.35
 tokenizers>=0.13,<0.14
 numpy<2
+sentencepiece>=0.1.99   # Marian tokenizer for the local MT verifier
