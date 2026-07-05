@@ -81,7 +81,7 @@ def verify_all(translator: Translator, items: List[Dict],
         out.append({
             "ngram": it["ngram"],
             "verdict": "acceptable" if maxd <= threshold else "inconsistent",
-            "max_distance": round(maxd, 2),
-            "back": [{"span": s, "en": bt} for (s, bt) in pairs],
+            "summary": f"max divergence {round(maxd, 2)}",
+            "rows": [{"span": s, "note": f"“{bt}”"} for (s, bt) in pairs],
         })
     return out

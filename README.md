@@ -120,10 +120,14 @@ python run.py
 - **Containment merge** — folds a variant that is a contiguous fragment of a
   longer variant into it, killing partial-alignment false flags (خط →
   خط اساس جدول زمني).
-- **Local MT verifier** — **MT-verify all** back-translates each flagged Arabic
-  variant to English with a small local Marian model (opus-mt-ar-en); agreeing
-  back-translations ⇒ likely acceptable, diverging ⇒ inconsistent. Fully
-  offline. Advisory only — back-translation of short isolated spans is noisy.
+- **Local verifier** — **Verify all** gives an offline second opinion on each
+  inconsistent flag, with two backends (toggle):
+  - **Back-translation** (opus-mt-ar-en, ~300MB): translates each variant back
+    to English; agreeing ⇒ likely acceptable, diverging ⇒ inconsistent.
+  - **LaBSE** (setu4993/LaBSE, ~1.8GB): compares multilingual sentence
+    embeddings of the term and each variant — no translation step, so it
+    degrades less on short terms.
+  Both are heuristic/advisory, run locally, and need no API key.
 
 ## Headless test (no GUI)
 

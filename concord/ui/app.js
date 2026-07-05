@@ -388,22 +388,28 @@ $("#ph-k").addEventListener("click", async ()=>{
     `</div></div>`;
 });
 
-// ---------- local MT: back-translation verify ----------
+// ---------- local verifier: back-translation | LaBSE ----------
+let verifierChoice="mt";
+$("#verifier").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+  $("#verifier").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); verifierChoice=b.dataset.v;
+}));
 $("#mtall").addEventListener("click", async ()=>{
-  $("#mtall").disabled=true; $("#toolshint").textContent="Loading MT model / back-translating (first run downloads ~300MB)…";
-  const r=await api().mt_verify_all();
+  const label=verifierChoice==="labse"?"LaBSE":"Back-translation";
+  $("#mtall").disabled=true;
+  $("#toolshint").textContent=`Loading ${label} model & verifying (first run downloads the model)…`;
+  const r=await api().verify_all(verifierChoice);
   $("#mtall").disabled=false;
-  if(r.error){ $("#toolshint").textContent="MT error: "+r.error; return; }
+  if(r.error){ $("#toolshint").textContent="Verify error: "+r.error; return; }
   if(!r.verdicts.length){ $("#toolshint").textContent="No inconsistent flags to verify."; return; }
   const by=new Map(r.verdicts.map(v=>[v.ngram,v]));
   document.querySelectorAll("#results .group").forEach((g,i)=>{
     const f=lastRendered[i]; if(!f) return; const v=by.get(f.ngram); if(!v) return;
     const out=g.querySelector(".mtout"); if(!out) return;
     out.classList.remove("hidden"); out.classList.toggle("bad", v.verdict==="inconsistent");
-    const bt=v.back.map(b=>`<span dir="rtl">${esc(b.span)}</span> → “${esc(b.en)}”`).join("<br>");
-    out.innerHTML=`<b>MT check: ${v.verdict}</b> · divergence ${v.max_distance} <span class="hint">(advisory — noisy on short spans)</span><div class="bt">${bt}</div>`;
+    const rows=v.rows.map(x=>`<span dir="rtl">${esc(x.span)}</span> → ${esc(x.note)}`).join("<br>");
+    out.innerHTML=`<b>${label}: ${v.verdict}</b> · ${esc(v.summary)} <span class="hint">(advisory)</span><div class="bt">${rows}</div>`;
   });
-  $("#toolshint").textContent=`MT-verified ${r.verdicts.length} flag(s) — advisory only.`;
+  $("#toolshint").textContent=`${label} verified ${r.verdicts.length} flag(s) — advisory only.`;
 });
 
 // ---------- LLM: judge all ----------
