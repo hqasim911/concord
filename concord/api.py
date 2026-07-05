@@ -140,8 +140,10 @@ class ConcordAPI:
                     self._emit("analyze-progress",
                                {"done": done, "total": total, "phase": "align"})
                 flags = engine.analyze(self._segments, progress=prog)
+                if cfg.get("labse_prefilter"):
+                    flags = self._labse_prefilter(flags, ec.include_consistent)
                 self._flags = flags
-                inc = sum(1 for f in flags if f.distinct >= 2)
+                inc = sum(1 for f in flags if self._is_inconsistent(f))
                 self._log(f"Grouped {len(flags)} n-gram(s) — {inc} inconsistent")
 
                 reverse = []
@@ -168,12 +170,53 @@ class ConcordAPI:
         threading.Thread(target=work, daemon=True).start()
         return {"started": True}
 
+    @staticmethod
+    def _is_inconsistent(f) -> bool:
+        """A flag is inconsistent if it has >=2 spans and the LaBSE pre-filter
+        (if run) did not clear it as acceptable."""
+        if f.distinct < 2:
+            return False
+        return not (f.verify and f.verify.get("verdict") == "acceptable")
+
+    def _labse_prefilter(self, flags, include_consistent):
+        """Verify each candidate inconsistent flag with LaBSE before results are
+        produced. Flags LaBSE judges 'acceptable' are cleared: dropped entirely,
+        or (in include-all mode) downgraded to consistent."""
+        from .core import embed as emb_mod
+        items = [{"ngram": f.ngram, "spans": [v.span for v in f.variants]}
+                 for f in flags if f.distinct >= 2]
+        if not items:
+            return flags
+        if self._embedder is None:
+            self._log("LaBSE pre-filter: loading LaBSE (~1.8GB)…")
+            self._embedder = emb_mod.Embedder()
+            self._log("LaBSE ready")
+        self._log(f"LaBSE pre-filter: verifying {len(items)} candidate flag(s)…")
+        vmap = {v["ngram"]: v for v in emb_mod.verify_all(self._embedder, items)}
+
+        kept, cleared = [], 0
+        for f in flags:
+            v = vmap.get(f.ngram)
+            if v is not None:
+                f.verify = v
+                if v["verdict"] == "acceptable":
+                    cleared += 1
+                    if not include_consistent:
+                        continue
+            kept.append(f)
+        self._log(f"LaBSE pre-filter: cleared {cleared} false positive(s)")
+        kept.sort(key=lambda f: (self._is_inconsistent(f), f.score, f.total),
+                  reverse=True)
+        return kept
+
     def _flags_to_json(self, flags) -> list:
         out = []
         for f in flags:
             out.append({
                 "ngram": f.ngram, "distinct": f.distinct, "total": f.total,
-                "score": round(f.score, 3), "inconsistent": f.distinct >= 2,
+                "score": round(f.score, 3),
+                "inconsistent": self._is_inconsistent(f),
+                "verify": f.verify,
                 "variants": [{
                     "span": v.span, "count": v.count,
                     "occurrences": [{

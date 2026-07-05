@@ -129,6 +129,10 @@ python run.py
     to English; agreeing ⇒ likely acceptable, diverging ⇒ inconsistent. Lighter
     download and more human-readable, but noisier on short spans.
   Both are heuristic/advisory, run locally, and need no API key.
+- **LaBSE pre-filter** (Settings) — run LaBSE *during* analysis as a precision
+  filter: candidate inconsistent flags LaBSE judges acceptable are cleared
+  before results are produced (dropped, or downgraded to consistent in
+  all-n-grams mode). Surviving flags show a LaBSE verdict badge.
 
 ## Headless test (no GUI)
 

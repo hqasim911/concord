@@ -127,6 +127,10 @@ let includeAll=true;
 $("#incmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
   $("#incmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); includeAll=b.dataset.v==="all";
 }));
+let prefilterOn=false;
+$("#prefiltermode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+  $("#prefiltermode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); prefilterOn=b.dataset.v==="on";
+}));
 $("#minvar").addEventListener("input",e=>$("#minvarlabel").textContent=e.target.value+"×");
 $("#minocc").addEventListener("input",e=>$("#occlabel").textContent=e.target.value+"×");
 
@@ -139,7 +143,7 @@ $("#run").addEventListener("click", ()=>{
   $("#progress").classList.remove("hidden"); $("#progbar").style.width="0%"; $("#progpct").textContent="0%";
   $("#runphase").textContent="Running…";
   $("#run").disabled=true;
-  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics,cluster_spans:clusterOn,merge_contained:containOn,min_variant_count:+$("#minvar").value,reverse:reverseOn,include_consistent:includeAll});
+  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics,cluster_spans:clusterOn,merge_contained:containOn,min_variant_count:+$("#minvar").value,reverse:reverseOn,include_consistent:includeAll,labse_prefilter:prefilterOn});
 });
 window.addEventListener("analyze-log", e=>clog(e.detail.msg));
 window.addEventListener("analyze-progress", e=>{
@@ -234,7 +238,7 @@ function render(){
       <div class="group-head" data-g="${gi}">
         <span class="chev">▸</span><span class="badge">${f.distinct} span${f.distinct>1?'s':''}</span>
         <span class="src">${hl(f.ngram,q)}</span>
-        <span class="meta">${f.total} occ${f.inconsistent?` · ${Math.round((f.score||0)*100)}% split`:' · consistent'}</span>
+        <span class="meta">${f.total} occ${f.inconsistent?` · ${Math.round((f.score||0)*100)}% split`:' · consistent'}${f.verify?` · LaBSE ${esc(f.verify.verdict)}`:''}</span>
         ${f.inconsistent?`<button class="whybtn" data-g="${gi}">why flagged?</button>`:''}
         <button class="llmbtn ${$("#llm-status").dataset.ok?'':'hidden'}" data-g="${gi}">LLM check</button>
       </div>

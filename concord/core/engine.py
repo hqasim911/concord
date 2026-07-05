@@ -49,6 +49,7 @@ class Flag:
     ngram: str
     variants: List[Variant]
     score: float = 0.0                # inconsistency score in [0, 1]
+    verify: Optional[dict] = None     # local-verifier verdict (LaBSE pre-filter)
 
     @property
     def distinct(self):
