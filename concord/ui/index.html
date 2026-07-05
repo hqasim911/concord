@@ -70,8 +70,11 @@
   .summary .n.flag{color:var(--rust)}
   .summary .k{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--mut);margin-top:6px;font-family:ui-monospace,monospace}
 
-  .progress{height:6px;background:var(--paper-2);border-radius:4px;overflow:hidden;margin:14px 0}
+  .progress{display:flex;align-items:center;gap:12px;margin:14px 0}
+  .progtrack{flex:1;height:10px;background:var(--paper-2);border-radius:5px;overflow:hidden}
   .progress .bar{height:100%;width:0;background:var(--jade);transition:width .2s}
+  .progpct{font-family:ui-monospace,monospace;font-size:14px;font-weight:700;
+    color:var(--jade-deep);min-width:46px;text-align:right}
 
   .filterbar{display:flex;gap:12px;align-items:center;margin:22px 0 12px;flex-wrap:wrap}
   .filterbar input[type=text]{flex:1;min-width:220px;padding:9px 12px;border:1px solid var(--line);
@@ -285,7 +288,10 @@
       <button class="btn ghost" id="back-settings">← Back to settings</button>
       <span class="hint" id="runphase" style="flex:1">Idle.</span>
     </div>
-    <div class="progress hidden" id="progress"><div class="bar" id="progbar"></div></div>
+    <div class="progress hidden" id="progress">
+      <div class="progtrack"><div class="bar" id="progbar"></div></div>
+      <span class="progpct" id="progpct">0%</span>
+    </div>
     <div class="console" id="console"></div>
 
     <div class="summary hidden" id="summary">

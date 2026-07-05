@@ -127,7 +127,7 @@ $("#run").addEventListener("click", ()=>{
   $("#console").innerHTML=""; clog("Analysis started","em");
   $("#summary").classList.add("hidden"); $("#toolsrow").classList.add("hidden");
   $("#filterbar").classList.add("hidden"); $("#results").innerHTML=""; $("#auxout").innerHTML="";
-  $("#progress").classList.remove("hidden"); $("#progbar").style.width="0%";
+  $("#progress").classList.remove("hidden"); $("#progbar").style.width="0%"; $("#progpct").textContent="0%";
   $("#runphase").textContent="Running…";
   $("#run").disabled=true;
   api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics,cluster_spans:clusterOn,min_variant_count:+$("#minvar").value,reverse:reverseOn,include_consistent:includeAll});
@@ -135,7 +135,9 @@ $("#run").addEventListener("click", ()=>{
 window.addEventListener("analyze-log", e=>clog(e.detail.msg));
 window.addEventListener("analyze-progress", e=>{
   const {done,total}=e.detail;
-  $("#progbar").style.width=(total?100*done/total:0).toFixed(1)+"%";
+  const pct=total?100*done/total:0;
+  $("#progbar").style.width=pct.toFixed(1)+"%";
+  $("#progpct").textContent=Math.round(pct)+"%";
   $("#runphase").textContent=`Aligning ${done}/${total} unique sentence pairs…`;
 });
 window.addEventListener("analyze-error", e=>{
@@ -146,7 +148,8 @@ window.addEventListener("analyze-error", e=>{
 });
 let reverseFlags=[];
 window.addEventListener("analyze-done", e=>{
-  $("#progress").classList.add("hidden"); $("#run").disabled=false;
+  $("#progbar").style.width="100%"; $("#progpct").textContent="100%";
+  $("#run").disabled=false;
   const d=e.detail; flags=d.flags; reverseFlags=d.reverse||[];
   // capture originals & current edits
   segOriginal.clear();
