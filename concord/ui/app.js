@@ -226,9 +226,11 @@ function render(){
         <span class="chev">▸</span><span class="badge">${f.distinct} span${f.distinct>1?'s':''}</span>
         <span class="src">${hl(f.ngram,q)}</span>
         <span class="meta">${f.total} occ${f.inconsistent?` · ${Math.round((f.score||0)*100)}% split`:' · consistent'}</span>
+        ${f.inconsistent?`<button class="whybtn" data-g="${gi}">why flagged?</button>`:''}
         <button class="llmbtn ${$("#llm-status").dataset.ok?'':'hidden'}" data-g="${gi}">LLM check</button>
       </div>
       <div class="variants hidden">${vars}</div>
+      <div class="whyout hidden" data-g="${gi}"></div>
       <div class="llmout hidden" data-g="${gi}"></div>
     </div>`;
   }).join("");
@@ -236,10 +238,17 @@ function render(){
 }
 function bind(host,data){
   host.querySelectorAll(".group-head").forEach(h=>h.addEventListener("click",ev=>{
-    if(ev.target.classList.contains("llmbtn")) return;
+    if(ev.target.classList.contains("llmbtn")||ev.target.classList.contains("whybtn")) return;
     const panel=h.nextElementSibling, open=panel.classList.toggle("hidden");
     h.querySelector(".chev").textContent=open?"▸":"▾";
     if(!open) panel.querySelectorAll("textarea.seg-tgt").forEach(grow);
+  }));
+  host.querySelectorAll(".whybtn").forEach(btn=>btn.addEventListener("click",e=>{
+    e.stopPropagation();
+    const f=data[+btn.dataset.g];
+    const out=btn.closest(".group").querySelector(".whyout");
+    if(!out.classList.contains("hidden")){ out.classList.add("hidden"); return; }
+    out.innerHTML=whyFlagged(f); out.classList.remove("hidden");
   }));
   host.querySelectorAll("textarea.seg-tgt").forEach(ta=>ta.addEventListener("input",()=>{
     const sid=ta.dataset.sid;
@@ -384,6 +393,66 @@ $("#llmall").addEventListener("click", async ()=>{
   });
   $("#toolshint").textContent=`LLM judged ${r.verdicts.length} flag(s).`;
 });
+
+// ---------- why-flagged: codepoint diff ----------
+function cpOf(ch){return ch.codePointAt(0).toString(16).toUpperCase().padStart(4,"0");}
+function suspicious(ch){
+  const c=ch.codePointAt(0);
+  if(c<0x20) return "control";
+  if(c===0x00A0) return "no-break space";
+  if(c===0x0640) return "tatweel";
+  if(c>=0x200B&&c<=0x200F) return "zero-width / mark";
+  if((c>=0x202A&&c<=0x202E)||(c>=0x2066&&c<=0x2069)) return "bidi control";
+  if((c>=0x41&&c<=0x5A)||(c>=0x61&&c<=0x7A)) return "Latin letter";
+  if(c>=0x30&&c<=0x39) return "ASCII digit";
+  if(c===0x06CC) return "Farsi yeh (ی)";
+  if(c===0x06A9) return "Farsi keheh (ک)";
+  if(c===0x0649) return "alef maksura";
+  return "";
+}
+function disp(ch){return ch===" "?"␠":esc(ch);}
+function cpTag(ch){return `<cite>U+${cpOf(ch)}</cite>`;}
+function annotate(s){
+  return [...s].map(ch=>{
+    const n=suspicious(ch);
+    return n ? `<span class="cp" title="U+${cpOf(ch)} ${n}">${disp(ch)}${cpTag(ch)}</span>` : esc(ch);
+  }).join("");
+}
+function diffHtml(a,b){
+  const A=[...a], B=[...b], n=A.length, m=B.length;
+  const dp=Array.from({length:n+1},()=>new Array(m+1).fill(0));
+  for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)
+    dp[i][j]=A[i]===B[j]?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]);
+  let i=0,j=0,out="";
+  const emit=(cls,ch)=>{ const t=suspicious(ch)?cpTag(ch):""; out+=cls?`<span class="${cls}">${disp(ch)}${t}</span>`:disp(ch)+t; };
+  while(i<n&&j<m){
+    if(A[i]===B[j]){ emit("",A[i]); i++;j++; }
+    else if(dp[i+1][j]>=dp[i][j+1]){ emit("d-del",A[i]); i++; }
+    else { emit("d-add",B[j]); j++; }
+  }
+  while(i<n){ emit("d-del",A[i]); i++; }
+  while(j<m){ emit("d-add",B[j]); j++; }
+  return out;
+}
+function whyFlagged(f){
+  const vs=f.variants;
+  let html=`<div class="whyhead">Spans compared as distinct (after normalization):</div>`;
+  html+=vs.map((v,i)=>`<div class="whyrow"><span class="whytag">Variant ${i+1} · ${v.count}×</span><span class="whyspan" dir="rtl">${annotate(v.span)}</span></div>`).join("");
+  if(vs.length>=2){
+    html+=`<div class="whyhead">Character diff — Variant 1 <span style="color:var(--rust)">removed</span> / Variant 2 <span style="color:var(--jade)">added</span>:</div>`;
+    html+=`<div class="whydiff" dir="rtl">${diffHtml(vs[0].span,vs[1].span)}</div>`;
+    if(vs.length>2) html+=`<div class="hint" style="margin-top:6px">(${vs.length-2} more variant(s); diff shows the top two.)</div>`;
+  }
+  const seen=new Map();
+  vs.forEach(v=>[...v.span].forEach(ch=>{const n=suspicious(ch); if(n&&!seen.has(ch)) seen.set(ch,n);}));
+  if(seen.size){
+    html+=`<div class="whyhead">Unusual characters present:</div><div class="whylegend">`+
+      [...seen].map(([ch,n])=>`<span class="cp">${disp(ch)} <cite>U+${cpOf(ch)}</cite> ${esc(n)}</span>`).join("")+`</div>`;
+  }else{
+    html+=`<div class="hint" style="margin-top:8px">No unusual characters — the spans differ in the aligned words themselves (an alignment/extraction difference, not a hidden character).</div>`;
+  }
+  return html;
+}
 
 // ---------- utils ----------
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}

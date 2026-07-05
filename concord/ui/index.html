@@ -123,6 +123,25 @@
 
   .llmout{padding:8px 18px 12px 26px;font-size:13px;color:var(--jade-deep);background:#fbfaf5}
   .llmout.bad{color:var(--rust)}
+
+  /* why-flagged codepoint diff */
+  .whybtn{border:1px solid var(--jade-deep);background:transparent;color:var(--jade-deep);
+    font-family:inherit;font-size:12px;padding:5px 11px;border-radius:5px;cursor:pointer;margin-left:8px}
+  .whybtn:hover{background:var(--jade-deep);color:#fff}
+  .whyout{padding:12px 18px 14px 26px;background:#fbfaf5;border-top:1px solid var(--line)}
+  .whyhead{font-family:ui-monospace,monospace;font-size:10.5px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--mut);margin:12px 0 5px}
+  .whyhead:first-child{margin-top:0}
+  .whyrow{display:flex;gap:10px;align-items:baseline;margin:3px 0}
+  .whytag{font-family:ui-monospace,monospace;font-size:11px;color:var(--jade-deep);flex:none;min-width:120px}
+  .whyspan,.whydiff{font-size:16px;line-height:2.1}
+  .cp{background:#f0e6d0;border:1px solid var(--line);border-radius:3px;padding:0 2px;margin:0 1px}
+  .cp cite,.d-add cite,.d-del cite{font-family:ui-monospace,monospace;font-size:8.5px;
+    color:var(--rust);font-style:normal;vertical-align:super;margin-left:1px}
+  .d-del{background:#f7dcd4;color:var(--rust);text-decoration:line-through;border-radius:2px}
+  .d-add{background:#d8ecdf;color:var(--jade-deep);border-radius:2px}
+  .whylegend{display:flex;flex-wrap:wrap;gap:8px}
+  .whylegend .cp{font-family:ui-monospace,monospace;font-size:12px}
   .empty{text-align:center;padding:60px 20px;color:var(--mut)}
   .empty .big{font-size:40px;margin-bottom:8px}
   .hidden{display:none!important}
