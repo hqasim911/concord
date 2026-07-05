@@ -97,6 +97,7 @@ class EngineConfig:
     cluster_max_dist: float = 0.2    # normalized edit distance threshold
     min_variant_count: int = 1       # drop variants seen fewer times (noise)
     reverse: bool = False            # also compute reverse (over-loaded) flags
+    include_consistent: bool = False  # keep single-span (consistent) n-grams too
     stopwords: Optional[set] = None
 
 
@@ -217,7 +218,9 @@ class ConsistencyEngine:
             if cfg.min_variant_count > 1:
                 variants = [v for v in variants
                             if v.count >= cfg.min_variant_count]
-            if len(variants) < 2:
+            if len(variants) < 2 and not cfg.include_consistent:
+                continue
+            if not variants:
                 continue
             variants.sort(key=lambda v: v.count, reverse=True)
             if sum(v.count for v in variants) < cfg.min_occurrences:
@@ -225,7 +228,9 @@ class ConsistencyEngine:
             score = _entropy_score([v.count for v in variants])
             flags.append(Flag(ngram=display[key], variants=variants, score=score))
 
-        flags.sort(key=lambda f: (f.score, f.total, f.distinct), reverse=True)
+        # inconsistent (>=2 spans) first, then by score / frequency
+        flags.sort(key=lambda f: (f.distinct >= 2, f.score, f.total, f.distinct),
+                   reverse=True)
         return flags
 
     def analyze_reverse(

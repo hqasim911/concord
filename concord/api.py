@@ -37,6 +37,9 @@ class ConcordAPI:
         self._window = window
 
     # ---- JS bridge helpers ----
+    def _log(self, msg: str):
+        self._emit("analyze-log", {"msg": msg})
+
     def _emit(self, event: str, payload: dict):
         if not self._window:
             return
@@ -121,23 +124,39 @@ class ConcordAPI:
                     cluster_spans=bool(cfg.get("cluster_spans", True)),
                     cluster_max_dist=float(cfg.get("cluster_max_dist", 0.2)),
                     min_variant_count=int(cfg.get("min_variant_count", 1)),
+                    include_consistent=bool(cfg.get("include_consistent", False)),
                 )
+                self._log(f"Backend: {self._model_kind} / {self._model_name}")
+                self._log(f"Corpus: {len(self._segments)} segments "
+                          f"across {len(self._files)} file(s)")
+                self._log("Aligning unique sentence pairs…")
                 engine = ConsistencyEngine(self._aligner, ec)
 
                 def prog(done, total):
-                    self._emit("analyze-progress", {"done": done, "total": total})
+                    self._emit("analyze-progress",
+                               {"done": done, "total": total, "phase": "align"})
                 flags = engine.analyze(self._segments, progress=prog)
                 self._flags = flags
+                inc = sum(1 for f in flags if f.distinct >= 2)
+                self._log(f"Grouped {len(flags)} n-gram(s) — {inc} inconsistent")
+
                 reverse = []
                 if cfg.get("reverse"):
+                    self._log("Reverse pass (AR→EN)…")
                     reverse = engine.analyze_reverse(self._segments)
+                    self._log(f"Reverse: {len(reverse)} over-loaded span(s)")
                 self._reverse = reverse
+
+                ph = self._placeholder_count()
+                self._log(f"Placeholder issues: {ph}")
+                self._log("Done.")
                 self._emit("analyze-done", {
                     "segments": len(self._segments),
                     "files": len(self._files),
+                    "inconsistent": inc,
                     "flags": self._flags_to_json(flags),
                     "reverse": self._reverse_to_json(reverse),
-                    "placeholder_issues": self._placeholder_count(),
+                    "placeholder_issues": ph,
                 })
             except Exception as e:
                 self._emit("analyze-error", {"error": str(e),
@@ -150,7 +169,7 @@ class ConcordAPI:
         for f in flags:
             out.append({
                 "ngram": f.ngram, "distinct": f.distinct, "total": f.total,
-                "score": round(f.score, 3),
+                "score": round(f.score, 3), "inconsistent": f.distinct >= 2,
                 "variants": [{
                     "span": v.span, "count": v.count,
                     "occurrences": [{

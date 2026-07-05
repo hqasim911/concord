@@ -132,6 +132,46 @@
   details.llmcfg input{padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-family:ui-monospace,monospace;font-size:12px;background:#fff}
   details.llmcfg .f{display:flex;flex-direction:column;gap:5px}
   details.llmcfg .f label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--mut);font-family:ui-monospace,monospace}
+  details.llmcfg select{padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-family:ui-monospace,monospace;font-size:12px;background:#fff}
+
+  /* two-page nav */
+  .nav{display:flex;gap:8px;margin-top:16px}
+  .nav .step{flex:0 0 auto;border:1px solid var(--line);background:var(--paper-2);color:var(--mut);
+    font-family:ui-monospace,monospace;font-size:12px;font-weight:700;letter-spacing:.05em;
+    padding:8px 16px;border-radius:6px;cursor:pointer}
+  .nav .step.on{background:var(--jade);color:#fff;border-color:var(--jade)}
+  .nav .step:disabled{opacity:.5;cursor:not-allowed}
+  .page{padding-top:8px}
+
+  /* settings page: vertical column of cards */
+  .settings-col{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+  .card{border:1px solid var(--line);border-radius:10px;background:var(--paper-2);padding:18px 20px}
+  .card h3{margin:0 0 14px;font-size:13px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--jade-deep);font-family:ui-monospace,monospace}
+  .card .modelbar{margin:0;background:#fff}
+  .formgrid{display:grid;grid-template-columns:200px 1fr;gap:16px 18px;align-items:center}
+  .formgrid > label{font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--mut);
+    font-family:ui-monospace,monospace;text-align:right}
+  .formgrid > div{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .analyze-row{max-width:760px;margin:20px auto 0;display:flex;align-items:center;gap:14px}
+  .analyze-row .btn{font-size:16px;padding:11px 26px}
+
+  /* run page console */
+  .runhead{margin-bottom:12px}
+  .console{background:#0f1a15;color:#cfe4d8;border-radius:8px;padding:14px 16px;
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;
+    max-height:280px;overflow:auto;white-space:pre-wrap;border:1px solid var(--jade-deep)}
+  .console .ts{color:#6f8a7d}
+  .console .em{color:#8fd3b3;font-weight:700}
+  .console .warn{color:var(--amber)}
+  .console .err{color:#e88a72}
+  .console:empty{display:none}
+
+  /* consistent (non-flagged) groups */
+  .group.consistent .group-head{border-left-color:var(--jade)}
+  .group.consistent .group-head .chev{color:var(--jade)}
+  .group.consistent .group-head .badge{background:var(--jade)}
+  .rxbad{outline:2px solid var(--rust)!important}
 </style>
 </head>
 <body>
@@ -141,120 +181,147 @@
     <div class="tag">neural word-alignment · EN→AR · runs locally</div>
   </div>
   <p class="lede">Finds source phrases translated inconsistently — by aligning each English n-gram to the exact Arabic span that translates it, so only genuine term inconsistencies are flagged, not differences elsewhere in the segment.</p>
+  <div class="nav">
+    <button class="step on" id="nav-settings" data-p="settings">1 · Settings</button>
+    <button class="step" id="nav-run" data-p="run" disabled>2 · Run &amp; Results</button>
+  </div>
 </div></header>
 
 <div class="wrap stage">
 
-  <div class="modelbar">
-    <span class="status-dot" id="mdot"></span>
-    <span id="mtext" style="flex:1">Alignment model not loaded.</span>
-    <span class="picklabel">Backend:</span>
-    <div class="switch" id="backendpick">
-      <button data-v="simalign" class="on">SimAlign</button>
-      <button data-v="awesome">awesome-align</button>
-      <button data-v="ensemble">Ensemble</button>
-    </div>
-    <span class="picklabel">Model:</span>
-    <div class="switch" id="modelpick">
-      <button data-v="bert" class="on">mBERT (faster)</button>
-      <button data-v="xlmr">XLM-R (accuracy)</button>
-    </div>
-    <button class="btn" id="loadmodel">Load model</button>
-  </div>
+  <!-- ==================== PAGE 1 · SETTINGS ==================== -->
+  <section class="page" id="page-settings">
+    <div class="settings-col">
 
-  <div class="row">
-    <button class="btn" id="openfiles">Open XLIFF files…</button>
-    <span class="hint" id="filehint">Select one or more .xlf / .xliff files.</span>
-  </div>
-  <div id="filechips" class="files"></div>
-
-  <details class="llmcfg">
-    <summary>Optional: connect an LLM for semantic verdicts</summary>
-    <div class="body">
-      <div class="f"><label>Provider</label>
-        <select id="llm-provider">
-          <option value="auto">Auto-detect</option>
-          <option value="anthropic">Anthropic (/v1/messages)</option>
-          <option value="openai">OpenAI-compatible</option>
-        </select></div>
-      <div class="f"><label>Base URL</label><input id="llm-url" size="32" placeholder="https://api.anthropic.com"></div>
-      <div class="f"><label>API key</label><input id="llm-key" size="24" type="password" placeholder="sk-…"></div>
-      <div class="f"><label>Model</label><input id="llm-model" size="20" placeholder="claude-…"></div>
-      <button class="btn ghost" id="llm-test">Connect</button>
-      <span class="hint" id="llm-status"></span>
-    </div>
-  </details>
-
-  <div class="controls" id="controls">
-    <div class="ctl">
-      <label>N-gram length</label>
-      <div class="row">
-        <div class="switch" id="nmode"><button data-v="range" class="on">Range</button><button data-v="exact">Exact</button></div>
-        <div class="nchips" id="nchips">
-          <button data-n="1">1</button><button data-n="2">2</button><button data-n="3">3</button>
-          <button data-n="4">4</button><button data-n="5">5</button><button data-n="6">6</button>
+      <div class="card">
+        <h3>Alignment model</h3>
+        <div class="modelbar">
+          <span class="status-dot" id="mdot"></span>
+          <span id="mtext" style="flex:1">Alignment model not loaded.</span>
+          <button class="btn" id="loadmodel">Load model</button>
         </div>
-        <span class="val" id="nlabel">2–3 words</span>
+        <div class="formgrid" style="margin-top:14px">
+          <label>Backend</label>
+          <div class="switch" id="backendpick">
+            <button data-v="simalign" class="on">SimAlign</button>
+            <button data-v="awesome">awesome-align</button>
+            <button data-v="ensemble">Ensemble</button>
+          </div>
+          <label>Base model</label>
+          <div class="switch" id="modelpick">
+            <button data-v="bert" class="on">mBERT (faster)</button>
+            <button data-v="xlmr">XLM-R (accuracy)</button>
+          </div>
+        </div>
       </div>
-    </div>
-    <div class="ctl"><label>Stopwords</label>
-      <div class="switch" id="swmode"><button data-v="off">Off</button><button data-v="trim" class="on">Trim edges</button><button data-v="strict">Strict</button></div>
-    </div>
-    <div class="ctl"><label>Min occurrences</label>
-      <div class="row"><input type="range" id="minocc" min="2" max="20" value="2"><span class="val" id="occlabel">2×</span></div>
-    </div>
-    <div class="ctl"><label>Arabic normalization</label>
-      <div class="switch" id="taamode"><button data-v="on" class="on">Fold ة→ه</button><button data-v="off">Keep</button></div>
-    </div>
-    <div class="ctl"><label>Article / clitic folding</label>
-      <div class="switch" id="clitmode"><button data-v="on" class="on">Strip الـ</button><button data-v="off">Keep</button></div>
-    </div>
-    <div class="ctl"><label>Merge near-duplicates</label>
-      <div class="switch" id="clustermode"><button data-v="on" class="on">On</button><button data-v="off">Off</button></div>
-    </div>
-    <div class="ctl"><label>Min variant count</label>
-      <div class="row"><input type="range" id="minvar" min="1" max="10" value="1"><span class="val" id="minvarlabel">1×</span></div>
-    </div>
-    <div class="ctl"><label>Direction</label>
-      <div class="switch" id="revmode"><button data-v="off" class="on">EN→AR</button><button data-v="on">+ AR→EN</button></div>
-    </div>
-    <div class="ctl" style="margin-left:auto"><label>&nbsp;</label>
-      <button class="btn" id="run" disabled>Analyze</button>
-    </div>
-  </div>
 
-  <div class="progress hidden" id="progress"><div class="bar" id="progbar"></div></div>
+      <div class="card">
+        <h3>Files</h3>
+        <div class="row">
+          <button class="btn" id="openfiles">Open XLIFF files…</button>
+          <span class="hint" id="filehint">Select one or more .xlf / .xliff files.</span>
+        </div>
+        <div id="filechips" class="files"></div>
+      </div>
 
-  <div class="summary hidden" id="summary">
-    <div class="cell"><div class="n" id="s-seg">0</div><div class="k">Segments</div></div>
-    <div class="cell"><div class="n" id="s-files">0</div><div class="k">Files</div></div>
-    <div class="cell"><div class="n flag" id="s-flag">0</div><div class="k">Inconsistent terms</div></div>
-    <div class="cell"><div class="n" id="s-rev">0</div><div class="k">Overloaded spans</div></div>
-    <div class="cell"><div class="n" id="s-ph">0</div><div class="k" id="ph-k" style="cursor:pointer">Placeholder issues ▸</div></div>
-  </div>
+      <div class="card">
+        <h3>Parameters</h3>
+        <div class="formgrid">
+          <label>N-gram length</label>
+          <div>
+            <div class="switch" id="nmode"><button data-v="range" class="on">Range</button><button data-v="exact">Exact</button></div>
+            <div class="nchips" id="nchips">
+              <button data-n="1">1</button><button data-n="2">2</button><button data-n="3">3</button>
+              <button data-n="4">4</button><button data-n="5">5</button><button data-n="6">6</button>
+            </div>
+            <span class="val" id="nlabel">2–3 words</span>
+          </div>
+          <label>Stopwords</label>
+          <div><div class="switch" id="swmode"><button data-v="off">Off</button><button data-v="trim" class="on">Trim edges</button><button data-v="strict">Strict</button></div></div>
+          <label>Min occurrences</label>
+          <div><input type="range" id="minocc" min="2" max="20" value="2"><span class="val" id="occlabel">2×</span></div>
+          <label>Arabic normalization</label>
+          <div><div class="switch" id="taamode"><button data-v="on" class="on">Fold ة→ه</button><button data-v="off">Keep</button></div></div>
+          <label>Article / clitic folding</label>
+          <div><div class="switch" id="clitmode"><button data-v="on" class="on">Strip الـ</button><button data-v="off">Keep</button></div></div>
+          <label>Merge near-duplicates</label>
+          <div><div class="switch" id="clustermode"><button data-v="on" class="on">On</button><button data-v="off">Off</button></div></div>
+          <label>Min variant count</label>
+          <div><input type="range" id="minvar" min="1" max="10" value="1"><span class="val" id="minvarlabel">1×</span></div>
+          <label>Direction</label>
+          <div><div class="switch" id="revmode"><button data-v="off" class="on">EN→AR</button><button data-v="on">+ AR→EN</button></div></div>
+          <label>Result scope</label>
+          <div><div class="switch" id="incmode"><button data-v="all" class="on">All n-grams</button><button data-v="inc">Inconsistent only</button></div></div>
+        </div>
+      </div>
 
-  <div class="row hidden" id="toolsrow" style="margin:14px 0">
-    <div class="switch" id="viewmode"><button data-v="fwd" class="on">Forward EN→AR</button><button data-v="rev">Reverse AR→EN</button></div>
-    <button class="btn ghost" id="loadgloss">Load glossary…</button>
-    <button class="btn ghost" id="checkgloss">Check adherence</button>
-    <button class="btn ghost hidden" id="llmall">LLM-check all</button>
-    <span class="hint" id="toolshint"></span>
-  </div>
-  <div id="auxout"></div>
+      <details class="llmcfg">
+        <summary>Optional: connect an LLM for semantic verdicts</summary>
+        <div class="body">
+          <div class="f"><label>Provider</label>
+            <select id="llm-provider">
+              <option value="auto">Auto-detect</option>
+              <option value="anthropic">Anthropic (/v1/messages)</option>
+              <option value="openai">OpenAI-compatible</option>
+            </select></div>
+          <div class="f"><label>Base URL</label><input id="llm-url" size="32" placeholder="https://api.anthropic.com"></div>
+          <div class="f"><label>API key</label><input id="llm-key" size="24" type="password" placeholder="sk-…"></div>
+          <div class="f"><label>Model</label><input id="llm-model" size="20" placeholder="claude-…"></div>
+          <button class="btn ghost" id="llm-test">Connect</button>
+          <span class="hint" id="llm-status"></span>
+        </div>
+      </details>
 
-  <div class="filterbar hidden" id="filterbar">
-    <input type="text" id="filter" placeholder="Filter by source or Arabic span…">
-    <button class="btn ghost" id="toggleall" data-state="collapsed">Expand all</button>
-    <span class="hint" id="showing"></span>
-  </div>
+    </div>
+    <div class="analyze-row">
+      <button class="btn" id="run" disabled>Analyze →</button>
+      <span class="hint" id="run-hint">Load a model and open files to enable.</span>
+    </div>
+  </section>
 
-  <div class="editbar hidden" id="editbar">
-    <span class="st"><span id="editcount"></span></span>
-    <button class="btn ghost light" id="revertall">Revert all</button>
-    <button class="btn" id="exportbtn">Export corrected XLIFF</button>
-  </div>
+  <!-- ==================== PAGE 2 · RUN & RESULTS ==================== -->
+  <section class="page hidden" id="page-run">
+    <div class="runhead row">
+      <button class="btn ghost" id="back-settings">← Back to settings</button>
+      <span class="hint" id="runphase" style="flex:1">Idle.</span>
+    </div>
+    <div class="progress hidden" id="progress"><div class="bar" id="progbar"></div></div>
+    <div class="console" id="console"></div>
 
-  <div id="results"></div>
+    <div class="summary hidden" id="summary">
+      <div class="cell"><div class="n" id="s-seg">0</div><div class="k">Segments</div></div>
+      <div class="cell"><div class="n" id="s-files">0</div><div class="k">Files</div></div>
+      <div class="cell"><div class="n" id="s-ngrams">0</div><div class="k">N-grams</div></div>
+      <div class="cell"><div class="n flag" id="s-flag">0</div><div class="k">Inconsistent</div></div>
+      <div class="cell"><div class="n" id="s-rev">0</div><div class="k">Overloaded spans</div></div>
+      <div class="cell"><div class="n" id="s-ph">0</div><div class="k" id="ph-k" style="cursor:pointer">Placeholder ▸</div></div>
+    </div>
+
+    <div class="row hidden" id="toolsrow" style="margin:14px 0">
+      <div class="switch" id="viewmode"><button data-v="fwd" class="on">Forward EN→AR</button><button data-v="rev">Reverse AR→EN</button></div>
+      <button class="btn ghost" id="loadgloss">Load glossary…</button>
+      <button class="btn ghost" id="checkgloss">Check adherence</button>
+      <button class="btn ghost hidden" id="llmall">LLM-check all</button>
+      <span class="hint" id="toolshint"></span>
+    </div>
+    <div id="auxout"></div>
+
+    <div class="filterbar hidden" id="filterbar">
+      <input type="text" id="filter" placeholder="Search source or Arabic span…">
+      <label class="hint" style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="rx"> regex</label>
+      <label class="hint" style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="inconly"> inconsistent only</label>
+      <button class="btn ghost" id="toggleall" data-state="collapsed">Expand all</button>
+      <span class="hint" id="showing"></span>
+    </div>
+
+    <div class="editbar hidden" id="editbar">
+      <span class="st"><span id="editcount"></span></span>
+      <button class="btn ghost light" id="revertall">Revert all</button>
+      <button class="btn" id="exportbtn">Export corrected XLIFF</button>
+    </div>
+
+    <div id="results"></div>
+  </section>
 </div>
 
 <footer><div class="wrap">Concord · aligned-span consistency · alignment + files stay on this machine.</div></footer>

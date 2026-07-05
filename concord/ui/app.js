@@ -2,7 +2,27 @@
 const $ = s => document.querySelector(s);
 const api = () => window.pywebview.api;
 
+// ---------- page navigation ----------
+function showPage(p){
+  document.querySelectorAll(".page").forEach(el=>el.classList.add("hidden"));
+  $("#page-"+p).classList.remove("hidden");
+  document.querySelectorAll(".nav .step").forEach(b=>b.classList.toggle("on",b.dataset.p===p));
+}
+$("#nav-settings").addEventListener("click",()=>showPage("settings"));
+$("#nav-run").addEventListener("click",()=>{ if(!$("#nav-run").disabled) showPage("run"); });
+$("#back-settings").addEventListener("click",()=>showPage("settings"));
+
+// ---------- under-the-hood console ----------
+function clog(msg,cls){
+  const c=$("#console"); if(!c) return;
+  const now=new Date().toLocaleTimeString();
+  const line=document.createElement("div");
+  line.innerHTML=`<span class="ts">${now}</span>  <span class="${cls||''}">${esc(msg)}</span>`;
+  c.appendChild(line); c.scrollTop=c.scrollHeight;
+}
+
 let flags = [];
+let lastRendered = [];        // the slice currently in the DOM (post-filter/cap)
 let edits = new Map();        // sid -> text (mirror of backend for UI)
 let segOriginal = new Map();  // sid -> original target
 
@@ -22,9 +42,9 @@ $("#loadmodel").addEventListener("click", ()=>api().load_model(backendChoice, mo
 window.addEventListener("model-status", e=>{
   const d=e.detail, dot=$("#mdot"), txt=$("#mtext");
   dot.className="status-dot "+(d.state==="ready"?"ready":d.state==="loading"?"loading":d.state==="error"?"error":"");
-  if(d.state==="loading") txt.textContent=`Loading ${d.model} model (first run downloads it)…`;
-  else if(d.state==="ready"){ txt.textContent=`Model ready: ${d.model}.`; maybeEnableRun(); }
-  else if(d.state==="error"){ txt.textContent="Model error: "+d.error; }
+  if(d.state==="loading"){ txt.textContent=`Loading ${d.model} model (first run downloads it)…`; clog(`Loading ${d.model} model…`); }
+  else if(d.state==="ready"){ txt.textContent=`Model ready: ${d.model}.`; clog(`Model ready: ${d.model}`,"em"); maybeEnableRun(); }
+  else if(d.state==="error"){ txt.textContent="Model error: "+d.error; clog("Model error: "+d.error,"err"); }
 });
 
 // ---------- files ----------
@@ -94,21 +114,35 @@ let reverseOn=false;
 $("#revmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
   $("#revmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); reverseOn=b.dataset.v==="on";
 }));
+let includeAll=true;
+$("#incmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+  $("#incmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); includeAll=b.dataset.v==="all";
+}));
 $("#minvar").addEventListener("input",e=>$("#minvarlabel").textContent=e.target.value+"×");
 $("#minocc").addEventListener("input",e=>$("#occlabel").textContent=e.target.value+"×");
 
 // ---------- analyze ----------
 $("#run").addEventListener("click", ()=>{
+  $("#nav-run").disabled=false; showPage("run");
+  $("#console").innerHTML=""; clog("Analysis started","em");
+  $("#summary").classList.add("hidden"); $("#toolsrow").classList.add("hidden");
+  $("#filterbar").classList.add("hidden"); $("#results").innerHTML=""; $("#auxout").innerHTML="";
   $("#progress").classList.remove("hidden"); $("#progbar").style.width="0%";
+  $("#runphase").textContent="Running…";
   $("#run").disabled=true;
-  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics,cluster_spans:clusterOn,min_variant_count:+$("#minvar").value,reverse:reverseOn});
+  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics,cluster_spans:clusterOn,min_variant_count:+$("#minvar").value,reverse:reverseOn,include_consistent:includeAll});
 });
+window.addEventListener("analyze-log", e=>clog(e.detail.msg));
 window.addEventListener("analyze-progress", e=>{
-  const {done,total}=e.detail; $("#progbar").style.width=(100*done/total).toFixed(1)+"%";
+  const {done,total}=e.detail;
+  $("#progbar").style.width=(total?100*done/total:0).toFixed(1)+"%";
+  $("#runphase").textContent=`Aligning ${done}/${total} unique sentence pairs…`;
 });
 window.addEventListener("analyze-error", e=>{
   $("#progress").classList.add("hidden"); $("#run").disabled=false;
-  alert("Analysis error: "+e.detail.error);
+  $("#runphase").textContent="Analysis failed.";
+  clog("Analysis error: "+e.detail.error,"err");
+  if(e.detail.trace) clog(e.detail.trace,"err");
 });
 let reverseFlags=[];
 window.addEventListener("analyze-done", e=>{
@@ -121,8 +155,10 @@ window.addEventListener("analyze-done", e=>{
     if(o.target!==o.original) edits.set(o.sid,o.target);
   })));
   $("#summary").classList.remove("hidden");
-  $("#s-seg").textContent=d.segments; $("#s-files").textContent=d.files; $("#s-flag").textContent=flags.length;
+  $("#s-seg").textContent=d.segments; $("#s-files").textContent=d.files;
+  $("#s-ngrams").textContent=flags.length; $("#s-flag").textContent=d.inconsistent||0;
   $("#s-rev").textContent=reverseFlags.length; $("#s-ph").textContent=d.placeholder_issues||0;
+  $("#runphase").textContent=`Done — ${flags.length} n-gram(s), ${d.inconsistent||0} inconsistent.`;
   $("#toolsrow").classList.remove("hidden");
   $("#llmall").classList.toggle("hidden", !$("#llm-status").dataset.ok);
   $("#auxout").innerHTML="";
@@ -134,14 +170,33 @@ window.addEventListener("analyze-done", e=>{
 // ---------- render ----------
 const filterInput=$("#filter");
 filterInput.addEventListener("input",()=>{render();syncToggle();});
+$("#rx").addEventListener("change",()=>{render();syncToggle();});
+$("#inconly").addEventListener("change",()=>{render();syncToggle();});
+function buildMatcher(){
+  const raw=filterInput.value.trim();
+  if(!raw){ filterInput.classList.remove("rxbad"); return null; }
+  if($("#rx").checked){
+    try{ const re=new RegExp(raw,"i"); filterInput.classList.remove("rxbad"); return s=>re.test(String(s)); }
+    catch(err){ filterInput.classList.add("rxbad"); return null; }
+  }
+  filterInput.classList.remove("rxbad");
+  const low=raw.toLowerCase(); return s=>String(s).toLowerCase().includes(low);
+}
+const RENDER_CAP=400;
 function render(){
   const host=$("#results");
-  $("#filterbar").classList.toggle("hidden", flags.length===0 && !filterInput.value);
-  const q=filterInput.value.trim().toLowerCase();
-  const data = q ? flags.filter(f=>f.ngram.toLowerCase().includes(q)||f.variants.some(v=>v.span.includes(q))) : flags;
-  if(!flags.length){ host.innerHTML=`<div class="empty"><div class="big">✓</div><strong>No inconsistencies found</strong><div style="margin-top:6px">Every aligned span is consistent under these settings.</div></div>`; $("#showing").textContent=""; return; }
-  $("#showing").textContent=`${data.length} of ${flags.length} shown`;
-  host.innerHTML=data.map((f,gi)=>{
+  if(!flags.length){ $("#filterbar").classList.add("hidden"); host.innerHTML=`<div class="empty"><div class="big">✓</div><strong>No n-grams found</strong><div style="margin-top:6px">Nothing matched these settings.</div></div>`; $("#showing").textContent=""; return; }
+  $("#filterbar").classList.remove("hidden");
+  const m=buildMatcher();
+  let data=flags;
+  if($("#inconly").checked) data=data.filter(f=>f.inconsistent);
+  if(m) data=data.filter(f=>m(f.ngram)||f.variants.some(v=>m(v.span)));
+  const shown=data.slice(0,RENDER_CAP);
+  lastRendered=shown;
+  const q=$("#rx").checked?"":filterInput.value.trim();
+  $("#showing").textContent = data.length>RENDER_CAP ? `showing ${shown.length} of ${data.length} — refine search` : `${shown.length} of ${flags.length} shown`;
+  if(!shown.length){ host.innerHTML=`<div class="empty">No matches.</div>`; return; }
+  host.innerHTML=shown.map((f,gi)=>{
     const vars=f.variants.map((v,vi)=>{
       const rows=v.occurrences.map(o=>{
         const cur=edits.has(o.sid)?edits.get(o.sid):o.target;
@@ -163,18 +218,18 @@ function render(){
         </div>
         <div class="segs">${rows}</div></div>`;
     }).join("");
-    return `<div class="group">
+    return `<div class="group ${f.inconsistent?'':'consistent'}">
       <div class="group-head" data-g="${gi}">
-        <span class="chev">▸</span><span class="badge">${f.distinct} spans</span>
+        <span class="chev">▸</span><span class="badge">${f.distinct} span${f.distinct>1?'s':''}</span>
         <span class="src">${hl(f.ngram,q)}</span>
-        <span class="meta">${f.total} occ · ${Math.round((f.score||0)*100)}% split</span>
+        <span class="meta">${f.total} occ${f.inconsistent?` · ${Math.round((f.score||0)*100)}% split`:' · consistent'}</span>
         <button class="llmbtn ${$("#llm-status").dataset.ok?'':'hidden'}" data-g="${gi}">LLM check</button>
       </div>
       <div class="variants hidden">${vars}</div>
       <div class="llmout hidden" data-g="${gi}"></div>
     </div>`;
   }).join("");
-  bind(host,data);
+  bind(host,shown);
 }
 function bind(host,data){
   host.querySelectorAll(".group-head").forEach(h=>h.addEventListener("click",ev=>{
@@ -319,7 +374,7 @@ $("#llmall").addEventListener("click", async ()=>{
   if(r.error){ $("#toolshint").textContent="LLM error: "+r.error; return; }
   const byNgram=new Map(r.verdicts.map(v=>[v.ngram,v]));
   document.querySelectorAll("#results .group").forEach((g,i)=>{
-    const f=flags[i]; if(!f) return; const v=byNgram.get(f.ngram); if(!v) return;
+    const f=lastRendered[i]; if(!f) return; const v=byNgram.get(f.ngram); if(!v) return;
     let out=g.querySelector(".llmout"); if(out){ out.classList.remove("hidden","bad");
       out.textContent = v.error ? ("LLM error: "+v.error) : `Verdict: ${v.verdict||"?"}${v.preferred?` · preferred: ${v.preferred}`:''}${v.reason?` — ${v.reason}`:''}`;
       if(v.error||v.verdict==="inconsistent") out.classList.add("bad"); }
