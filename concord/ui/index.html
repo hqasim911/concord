@@ -128,6 +128,14 @@
   .mtout .bt{font-family:ui-monospace,monospace;font-size:12px;color:var(--mut);margin-top:4px}
   .dropnote{padding:8px 18px 8px 26px;font-size:12.5px;color:var(--amber);
     background:#fdf6ea;border-top:1px solid var(--line)}
+  .group.violation .group-head{border-left-color:var(--amber)}
+  .group.violation .group-head .badge{background:var(--amber)}
+  .tbnote{padding:9px 18px;font-size:13px;color:var(--jade-deep);background:#eef5ef;border-top:1px solid var(--line)}
+  .tbnote.bad{color:var(--rust);background:#fdf1ee}
+  .approvebtn{border:1px solid var(--jade-deep);background:transparent;color:var(--jade-deep);
+    font-family:inherit;font-size:12px;padding:5px 11px;border-radius:5px;cursor:pointer}
+  .approvebtn:hover{background:var(--jade-deep);color:#fff}
+  .approvebtn.done{background:var(--jade);color:#fff;border-color:var(--jade)}
 
   /* why-flagged codepoint diff */
   .whybtn{border:1px solid var(--jade-deep);background:transparent;color:var(--jade-deep);
@@ -257,6 +265,21 @@
       </div>
 
       <div class="card">
+        <h3>Approved term base</h3>
+        <div class="formgrid">
+          <label>Check against term base</label>
+          <div><div class="switch" id="tbmode"><button data-v="off" class="on">Off</button><button data-v="on">On</button></div>
+            <span class="hint" id="tbcount">0 approved terms</span></div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn ghost" id="tbview">View / manage</button>
+          <button class="btn ghost" id="tbclear">Clear all</button>
+          <span class="hint">saved to ~/.concord/termbase.json · persists across sessions</span>
+        </div>
+        <div id="tblist"></div>
+      </div>
+
+      <div class="card">
         <h3>Parameters</h3>
         <div class="formgrid">
           <label>N-gram length</label>
@@ -343,6 +366,7 @@
       <div class="cell"><div class="n" id="s-ngrams">0</div><div class="k">N-grams</div></div>
       <div class="cell"><div class="n flag" id="s-flag">0</div><div class="k">Inconsistent</div></div>
       <div class="cell"><div class="n" id="s-rev">0</div><div class="k">Overloaded spans</div></div>
+      <div class="cell"><div class="n" id="s-tbv">0</div><div class="k">Term-base viol.</div></div>
       <div class="cell"><div class="n" id="s-ph">0</div><div class="k" id="ph-k" style="cursor:pointer">Placeholder ▸</div></div>
     </div>
 
@@ -350,6 +374,7 @@
       <div class="switch" id="viewmode"><button data-v="fwd" class="on">Forward EN→AR</button><button data-v="rev">Reverse AR→EN</button></div>
       <button class="btn ghost" id="loadgloss">Load glossary…</button>
       <button class="btn ghost" id="checkgloss">Check adherence</button>
+      <button class="btn ghost" id="approveall">Approve all → term base</button>
       <div class="switch" id="verifier"><button data-v="labse" class="on">LaBSE</button><button data-v="mt">Back-translation</button></div>
       <button class="btn ghost" id="mtall">Verify all</button>
       <button class="btn ghost hidden" id="llmall">LLM-check all</button>

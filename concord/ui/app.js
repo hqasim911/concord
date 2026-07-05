@@ -137,6 +137,12 @@ $("#faithmode").querySelectorAll("button").forEach(b=>b.addEventListener("click"
   $("#faithmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); faithOn=b.dataset.v==="on";
 }));
 $("#faiththr").addEventListener("input",e=>$("#faithlabel").textContent=e.target.value+"%");
+let checkTB=false;
+$("#tbmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+  $("#tbmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); checkTB=b.dataset.v==="on";
+}));
+function refreshTB(){ if(!window.pywebview) return; api().termbase_info().then(r=>$("#tbcount").textContent=`${r.count} approved term(s)`); }
+window.addEventListener("pywebviewready", refreshTB);
 $("#minvar").addEventListener("input",e=>$("#minvarlabel").textContent=e.target.value+"×");
 $("#minocc").addEventListener("input",e=>$("#occlabel").textContent=e.target.value+"×");
 
@@ -149,7 +155,7 @@ $("#run").addEventListener("click", ()=>{
   $("#progress").classList.remove("hidden"); $("#progbar").style.width="0%"; $("#progpct").textContent="0%";
   $("#runphase").textContent="Running…";
   $("#run").disabled=true;
-  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics,cluster_spans:clusterOn,merge_contained:containOn,min_variant_count:+$("#minvar").value,reverse:reverseOn,include_consistent:includeAll,labse_prefilter:prefilterOn,prefilter_threshold:(+$("#prefilterthr").value)/100,faithfulness_filter:faithOn,faithfulness_threshold:(+$("#faiththr").value)/100});
+  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics,cluster_spans:clusterOn,merge_contained:containOn,min_variant_count:+$("#minvar").value,reverse:reverseOn,include_consistent:includeAll,labse_prefilter:prefilterOn,prefilter_threshold:(+$("#prefilterthr").value)/100,faithfulness_filter:faithOn,faithfulness_threshold:(+$("#faiththr").value)/100,check_termbase:checkTB});
 });
 window.addEventListener("analyze-log", e=>clog(e.detail.msg));
 window.addEventListener("analyze-progress", e=>{
@@ -180,6 +186,7 @@ window.addEventListener("analyze-done", e=>{
   $("#s-seg").textContent=d.segments; $("#s-files").textContent=d.files;
   $("#s-ngrams").textContent=flags.length; $("#s-flag").textContent=d.inconsistent||0;
   $("#s-rev").textContent=reverseFlags.length; $("#s-ph").textContent=d.placeholder_issues||0;
+  $("#s-tbv").textContent=flags.filter(f=>f.tb_violation).length;
   $("#runphase").textContent=`Done — ${flags.length} n-gram(s), ${d.inconsistent||0} inconsistent.`;
   $("#toolsrow").classList.remove("hidden");
   $("#llmall").classList.toggle("hidden", !$("#llm-status").dataset.ok);
@@ -237,17 +244,19 @@ function render(){
           <span class="varspan">${esc(v.span)}</span>
           <span class="cnt">${v.count}×</span>
           <button class="usebtn" data-g="${gi}" data-v="${vi}">Use for all ${f.total}</button>
+          <button class="approvebtn ${f.approved===v.span?'done':''}" data-g="${gi}" data-v="${vi}">${f.approved===v.span?'Approved ✓':'Approve ✓'}</button>
         </div>
         <div class="segs">${rows}</div></div>`;
     }).join("");
-    return `<div class="group ${f.inconsistent?'':'consistent'}">
+    return `<div class="group ${f.inconsistent?'':'consistent'} ${f.tb_violation?'violation':''}">
       <div class="group-head" data-g="${gi}">
-        <span class="chev">▸</span><span class="badge">${f.distinct} span${f.distinct>1?'s':''}</span>
+        <span class="chev">▸</span><span class="badge">${f.tb_violation?'term-base':f.distinct+' span'+(f.distinct>1?'s':'')}</span>
         <span class="src">${hl(f.ngram,q)}</span>
         <span class="meta">${f.total} occ${f.inconsistent?` · ${Math.round((f.score||0)*100)}% split`:' · consistent'}${f.verify?` · LaBSE ${esc(f.verify.verdict)}${f.verify.agreement!=null?` (${f.verify.agreement})`:''}`:''}</span>
         ${f.inconsistent?`<button class="whybtn" data-g="${gi}">why flagged?</button>`:''}
         <button class="llmbtn ${$("#llm-status").dataset.ok?'':'hidden'}" data-g="${gi}">LLM check</button>
       </div>
+      ${f.approved?`<div class="tbnote ${f.tb_violation?'bad':''}">${f.tb_violation?'⚠ Term-base violation — ':'✓ Matches term base — '}approved: <span dir="rtl">${esc(f.approved)}</span>${f.tb_violation?` · this file uses ${f.variants.filter(v=>v.span!==f.approved).map(v=>`<span dir="rtl">${esc(v.span)}</span>`).join(", ")}`:''}</div>`:''}
       ${f.dropped&&f.dropped.length?`<div class="dropnote">Dropped ${f.dropped.length} mis-aligned span(s) — not a translation of the term: ${f.dropped.map(d=>`<span dir="rtl">${esc(d.span)}</span> (sim ${d.sim})`).join(", ")}</div>`:''}
       <div class="variants hidden">${vars}</div>
       <div class="whyout hidden" data-g="${gi}"></div>
@@ -293,6 +302,14 @@ function bind(host,data){
       if(ta){ta.value=text; ta.closest(".seg").classList.toggle("changed",edits.has(o.sid)); grow(ta);}
     }));
     refreshDirty();
+  }));
+  host.querySelectorAll(".approvebtn").forEach(btn=>btn.addEventListener("click",e=>{
+    e.stopPropagation();
+    const f=data[+btn.dataset.g], v=f.variants[+btn.dataset.v];
+    api().approve_term(f.ngram, v.span).then(()=>refreshTB());
+    f.approved=v.span;
+    btn.closest(".variants").querySelectorAll(".approvebtn").forEach(b=>{b.classList.remove("done");b.textContent="Approve ✓";});
+    btn.classList.add("done"); btn.textContent="Approved ✓";
   }));
   host.querySelectorAll(".llmbtn").forEach(btn=>btn.addEventListener("click",async e=>{
     e.stopPropagation(); const f=data[+btn.dataset.g];
@@ -397,6 +414,28 @@ $("#ph-k").addEventListener("click", async ()=>{
   out.innerHTML=`<div class="group"><div class="group-head"><span class="badge">${r.count}</span><span class="src">Placeholder mismatches (source vs target)</span></div><div class="variants">`+
     r.items.map(s=>`<div class="seg"><div class="seg-src">${esc(s.source)}</div><div dir="rtl" style="margin-top:4px">${esc(s.target)}</div><div class="seg-meta"><span>src: ${esc((s.src_ph||[]).join(", ")||"—")} · tgt: ${esc((s.tgt_ph||[]).join(", ")||"—")}</span></div></div>`).join("")+
     `</div></div>`;
+});
+
+// ---------- approved term base ----------
+$("#approveall").addEventListener("click", async ()=>{
+  const inc=flags.filter(f=>f.inconsistent).length;
+  if(!inc){ $("#toolshint").textContent="No inconsistent flags to approve."; return; }
+  if(!confirm(`Approve the most-frequent translation of ${inc} inconsistent flag(s) into the term base? You can prune it afterwards.`)) return;
+  const r=await api().approve_all(); refreshTB();
+  flags.forEach(f=>{ if(f.inconsistent) f.approved=f.variants[0].span; });
+  render();
+  $("#toolshint").textContent=`Approved ${r.approved} term(s) · ${r.count} in term base.`;
+});
+$("#tbview").addEventListener("click", async ()=>{
+  const r=await api().termbase_info(); const box=$("#tblist");
+  if(!r.count){ box.innerHTML=`<div class="hint" style="margin-top:10px">Term base is empty.</div>`; return; }
+  box.innerHTML=`<div style="margin-top:12px">`+r.entries.map(e=>`<div class="seg"><div class="seg-src">${esc(e.source)}</div><div dir="rtl" style="flex:1;font-size:15px">${esc(e.target)}</div><button class="revert-seg" data-k="${esc(e.key)}" style="visibility:visible">remove</button></div>`).join("")+`</div>`;
+  box.querySelectorAll("[data-k]").forEach(b=>b.addEventListener("click",async()=>{ await api().remove_term(b.dataset.k); refreshTB(); $("#tbview").click(); }));
+});
+$("#tbclear").addEventListener("click", async ()=>{
+  const r0=await api().termbase_info(); if(!r0.count) return;
+  if(!confirm(`Clear all ${r0.count} approved term(s)? This cannot be undone.`)) return;
+  await api().clear_termbase(); refreshTB(); $("#tblist").innerHTML="";
 });
 
 // ---------- local verifier: back-translation | LaBSE ----------

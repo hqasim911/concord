@@ -51,6 +51,8 @@ class Flag:
     score: float = 0.0                # inconsistency score in [0, 1]
     verify: Optional[dict] = None     # local-verifier verdict (LaBSE pre-filter)
     dropped: Optional[list] = None    # variants removed as mis-aligned
+    termbase_approved: Optional[str] = None   # approved translation, if any
+    termbase_violation: bool = False          # deviates from the approved term
 
     @property
     def distinct(self):
@@ -101,6 +103,7 @@ class EngineConfig:
     min_variant_count: int = 1       # drop variants seen fewer times (noise)
     reverse: bool = False            # also compute reverse (over-loaded) flags
     include_consistent: bool = False  # keep single-span (consistent) n-grams too
+    termbase: Optional[dict] = None  # ngram_key -> approved target (persist check)
     stopwords: Optional[set] = None
 
 
@@ -241,7 +244,14 @@ class ConsistencyEngine:
 
         flags: List[Flag] = []
         for key, gv in groups.items():
-            variants = list(gv.values())
+            raw = list(gv.values())
+            # term-base check runs on the raw spans (before inconsistency
+            # filters) so a single, in-file-consistent deviation still surfaces.
+            approved = cfg.termbase.get(key) if cfg.termbase else None
+            violation = approved is not None and any(v.span != approved
+                                                     for v in raw)
+
+            variants = raw
             if cfg.cluster_spans:
                 variants = _cluster_variants(variants, cfg.cluster_max_dist)
             if cfg.merge_contained:
@@ -249,19 +259,22 @@ class ConsistencyEngine:
             if cfg.min_variant_count > 1:
                 variants = [v for v in variants
                             if v.count >= cfg.min_variant_count]
-            if len(variants) < 2 and not cfg.include_consistent:
-                continue
             if not variants:
+                variants = raw
+            if len(variants) < 2 and not cfg.include_consistent and not violation:
                 continue
             variants.sort(key=lambda v: v.count, reverse=True)
-            if sum(v.count for v in variants) < cfg.min_occurrences:
+            if sum(v.count for v in variants) < cfg.min_occurrences \
+                    and not violation:
                 continue
             score = _entropy_score([v.count for v in variants])
-            flags.append(Flag(ngram=display[key], variants=variants, score=score))
+            flags.append(Flag(
+                ngram=display[key], variants=variants, score=score,
+                termbase_approved=approved, termbase_violation=violation))
 
-        # inconsistent (>=2 spans) first, then by score / frequency
-        flags.sort(key=lambda f: (f.distinct >= 2, f.score, f.total, f.distinct),
-                   reverse=True)
+        # term-base violations first, then in-file inconsistencies, then rest
+        flags.sort(key=lambda f: (f.termbase_violation, f.distinct >= 2,
+                                  f.score, f.total, f.distinct), reverse=True)
         return flags
 
     def analyze_reverse(

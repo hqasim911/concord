@@ -31,6 +31,8 @@ class ConcordAPI:
         self._glossary = []
         self._mt = None
         self._embedder = None
+        from .core.termbase import TermBase
+        self._termbase = TermBase().load()
         self._llm_cfg: Optional[llm_mod.LLMConfig] = None
         self._model_kind = "simalign"
         self._model_name = "bert"
@@ -129,6 +131,8 @@ class ConcordAPI:
                     merge_contained=bool(cfg.get("merge_contained", True)),
                     min_variant_count=int(cfg.get("min_variant_count", 1)),
                     include_consistent=bool(cfg.get("include_consistent", False)),
+                    termbase=(self._termbase.check_map()
+                              if cfg.get("check_termbase") else None),
                 )
                 self._log(f"Backend: {self._model_kind} / {self._model_name}")
                 self._log(f"Corpus: {len(self._segments)} segments "
@@ -276,6 +280,8 @@ class ConcordAPI:
                 "score": round(f.score, 3),
                 "inconsistent": self._is_inconsistent(f),
                 "verify": f.verify, "dropped": f.dropped,
+                "approved": f.termbase_approved,
+                "tb_violation": f.termbase_violation,
                 "variants": [{
                     "span": v.span, "count": v.count,
                     "occurrences": [{
@@ -429,6 +435,34 @@ class ConcordAPI:
             return {"verdicts": verdicts, "method": method}
         except Exception as e:
             return {"error": str(e), "trace": traceback.format_exc()[-600:]}
+
+    # ---- approved term base (persistent) ----
+    def termbase_info(self) -> dict:
+        return {"count": len(self._termbase),
+                "path": self._termbase.path,
+                "entries": self._termbase.as_list()}
+
+    def approve_term(self, ngram: str, target: str) -> dict:
+        """Record a resolved decision: source n-gram -> approved translation."""
+        count = self._termbase.add(ngram, target)
+        return {"ok": True, "count": count}
+
+    def approve_all(self) -> dict:
+        """Approve the dominant (most frequent) translation of every current
+        inconsistent flag. The reviewer can prune the term base afterwards."""
+        n = 0
+        for f in self._flags:
+            if f.distinct >= 2 and self._is_inconsistent(f):
+                self._termbase.add(f.ngram, f.variants[0].span)
+                n += 1
+        return {"ok": True, "approved": n, "count": len(self._termbase)}
+
+    def remove_term(self, key: str) -> dict:
+        return {"ok": True, "count": self._termbase.remove(key)}
+
+    def clear_termbase(self) -> dict:
+        self._termbase.clear()
+        return {"ok": True, "count": 0}
 
     # ---- glossary / termbase ----
     def load_glossary(self) -> dict:
