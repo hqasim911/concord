@@ -152,6 +152,38 @@ def ngrams_with_positions(
 # ---------------------------------------------------------------------------
 # Target span extraction from alignment
 # ---------------------------------------------------------------------------
+# Max gap (in tokens) tolerated between kept indices before an index counts
+# as an outlier. 1 lets a single unaligned particle sit inside a span while
+# still discarding far-flung spurious links.
+_SPAN_MAX_GAP = 1
+
+
+def trim_span_outliers(tgt_idx, max_gap: int = _SPAN_MAX_GAP):
+    """
+    From sorted unique target indices aligned to an n-gram, return the
+    (lo, hi) bounds of the densest cluster: the run holding the most aligned
+    indices where consecutive kept indices are at most max_gap tokens apart.
+
+    A raw min..max hull balloons whenever a single source word mis-aligns to
+    a distant target token (e.g. indices {2,3,15} -> a 14-token span). Keeping
+    only the dominant cluster drops that outlier and returns {2,3}.
+    """
+    runs = []                       # (lo, hi, count)
+    lo = prev = tgt_idx[0]
+    count = 1
+    for idx in tgt_idx[1:]:
+        if idx - prev <= max_gap + 1:
+            prev, count = idx, count + 1
+        else:
+            runs.append((lo, prev, count))
+            lo = prev = idx
+            count = 1
+    runs.append((lo, prev, count))
+    # most indices wins; tie-break: narrower span, then earlier position
+    best = max(runs, key=lambda r: (r[2], -(r[1] - r[0]), -r[0]))
+    return best[0], best[1]
+
+
 def target_span(
     tgt_tokens: List[str], alignments, ng_start: int, ng_len: int,
     normalize: bool = True, fold_taa: bool = True,
@@ -159,7 +191,8 @@ def target_span(
 ) -> str:
     """
     Given the n-gram's source token range and the alignment, return the
-    contiguous Arabic span (min..max aligned target index) that translates it.
+    Arabic span that translates it — the densest cluster of aligned target
+    tokens (outlier links trimmed; see trim_span_outliers).
 
     strip_clitics: when normalizing, also fold the definite article/clitic
     off each word so morphological variants of the same term are compared
@@ -169,7 +202,7 @@ def target_span(
     tgt_idx = sorted({ti for (si, ti) in alignments if si in ng_src})
     if not tgt_idx:
         return ""
-    lo, hi = tgt_idx[0], tgt_idx[-1]
+    lo, hi = trim_span_outliers(tgt_idx)
     span = " ".join(tgt_tokens[lo:hi + 1])
     span = strip_edge_punct_span(span)
     if not normalize:
