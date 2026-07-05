@@ -243,7 +243,9 @@ _AWESOME_MODEL_ALIASES = {
 
 
 def build_aligner(kind: str = "simalign", **kwargs) -> Aligner:
-    """Factory. kind in {'simalign','awesome','mock'}; wrapped in caching."""
+    """Factory. kind in {'simalign','awesome','ensemble','mock'}; wrapped in
+    caching. 'mode' (intersect|union) applies only to the ensemble."""
+    mode = kwargs.pop("mode", "intersect")
     if kind == "simalign":
         base = SimAlignAligner(**kwargs)
     elif kind == "awesome":
@@ -252,7 +254,6 @@ def build_aligner(kind: str = "simalign", **kwargs) -> Aligner:
         base = AwesomeAlignAligner(**kwargs)
     elif kind == "ensemble":
         m = kwargs.get("model", "bert")
-        mode = kwargs.get("mode", "intersect")
         base = EnsembleAligner([
             SimAlignAligner(model=m),
             AwesomeAlignAligner(model=_AWESOME_MODEL_ALIASES.get(m, m)),

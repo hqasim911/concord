@@ -51,12 +51,13 @@ class ConcordAPI:
             pass
 
     # ---- model lifecycle ----
-    def load_model(self, kind: str = "simalign", model: str = "bert") -> dict:
+    def load_model(self, kind: str = "simalign", model: str = "bert",
+                   mode: str = "intersect") -> dict:
         """Load the alignment model (downloads on first run). Runs in a thread."""
         def work():
             try:
                 self._emit("model-status", {"state": "loading", "model": model})
-                self._aligner = build_aligner(kind, model=model)
+                self._aligner = build_aligner(kind, model=model, mode=mode)
                 self._model_kind, self._model_name = kind, model
                 self._emit("model-status", {"state": "ready", "model": model})
             except Exception as e:
@@ -123,6 +124,7 @@ class ConcordAPI:
                     strip_clitics=bool(cfg.get("strip_clitics", True)),
                     cluster_spans=bool(cfg.get("cluster_spans", True)),
                     cluster_max_dist=float(cfg.get("cluster_max_dist", 0.2)),
+                    merge_contained=bool(cfg.get("merge_contained", True)),
                     min_variant_count=int(cfg.get("min_variant_count", 1)),
                     include_consistent=bool(cfg.get("include_consistent", False)),
                 )

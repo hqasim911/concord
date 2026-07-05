@@ -234,6 +234,11 @@
             <button data-v="bert" class="on">mBERT (faster)</button>
             <button data-v="xlmr">XLM-R (accuracy)</button>
           </div>
+          <label>Ensemble mode</label>
+          <div class="switch" id="ensmode">
+            <button data-v="intersect" class="on">Intersect (precise)</button>
+            <button data-v="union">Union (recall)</button>
+          </div>
         </div>
       </div>
 
@@ -268,6 +273,8 @@
           <div><div class="switch" id="clitmode"><button data-v="on" class="on">Strip الـ</button><button data-v="off">Keep</button></div></div>
           <label>Merge near-duplicates</label>
           <div><div class="switch" id="clustermode"><button data-v="on" class="on">On</button><button data-v="off">Off</button></div></div>
+          <label>Contained-fragment merge</label>
+          <div><div class="switch" id="containmode"><button data-v="on" class="on">On</button><button data-v="off">Off</button></div></div>
           <label>Min variant count</label>
           <div><input type="range" id="minvar" min="1" max="10" value="1"><span class="val" id="minvarlabel">1×</span></div>
           <label>Direction</label>

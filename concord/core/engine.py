@@ -95,6 +95,7 @@ class EngineConfig:
     strip_clitics: bool = True       # fold الـ / clitics off target terms
     cluster_spans: bool = True       # merge near-duplicate spans
     cluster_max_dist: float = 0.2    # normalized edit distance threshold
+    merge_contained: bool = True     # fold partial-alignment fragment spans
     min_variant_count: int = 1       # drop variants seen fewer times (noise)
     reverse: bool = False            # also compute reverse (over-loaded) flags
     include_consistent: bool = False  # keep single-span (consistent) n-grams too
@@ -124,6 +125,32 @@ def _cluster_variants(variants: List[Variant], max_dist: float) -> List[Variant]
         else:
             merged.append(Variant(span=v.span, occurrences=list(v.occurrences)))
     return merged
+
+
+def _is_contained(short_tokens: List[str], long_tokens: List[str]) -> bool:
+    """True if short_tokens appear as a contiguous sub-sequence of long_tokens
+    (and are strictly shorter). Partial alignments truncate a term to a
+    contiguous fragment of the full span, so this catches them."""
+    n, m = len(short_tokens), len(long_tokens)
+    if n == 0 or n >= m:
+        return False
+    return any(long_tokens[i:i + n] == short_tokens for i in range(m - n + 1))
+
+
+def _merge_contained(variants: List[Variant]) -> List[Variant]:
+    """Fold a variant whose span is a contiguous fragment of a longer variant's
+    span into that longer variant (a partial-alignment artifact, e.g. خط into
+    خط اساس جدول زمني). The longer span stays as the representative."""
+    kept: List[Variant] = []
+    for v in sorted(variants, key=lambda x: len(x.span.split()), reverse=True):
+        vtok = v.span.split()
+        for k in kept:
+            if _is_contained(vtok, k.span.split()):
+                k.occurrences.extend(v.occurrences)
+                break
+        else:
+            kept.append(v)
+    return kept
 
 
 class ConsistencyEngine:
@@ -215,6 +242,8 @@ class ConsistencyEngine:
             variants = list(gv.values())
             if cfg.cluster_spans:
                 variants = _cluster_variants(variants, cfg.cluster_max_dist)
+            if cfg.merge_contained:
+                variants = _merge_contained(variants)
             if cfg.min_variant_count > 1:
                 variants = [v for v in variants
                             if v.count >= cfg.min_variant_count]

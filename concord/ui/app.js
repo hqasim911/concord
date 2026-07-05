@@ -37,7 +37,12 @@ $("#backendpick").querySelectorAll("button").forEach(b=>b.addEventListener("clic
   $("#backendpick").querySelectorAll("button").forEach(x=>x.classList.remove("on"));
   b.classList.add("on"); backendChoice=b.dataset.v;
 }));
-$("#loadmodel").addEventListener("click", ()=>api().load_model(backendChoice, modelChoice));
+let ensembleMode="intersect";
+$("#ensmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+  $("#ensmode").querySelectorAll("button").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on"); ensembleMode=b.dataset.v;
+}));
+$("#loadmodel").addEventListener("click", ()=>api().load_model(backendChoice, modelChoice, ensembleMode));
 
 window.addEventListener("model-status", e=>{
   const d=e.detail, dot=$("#mdot"), txt=$("#mtext");
@@ -110,6 +115,10 @@ let clusterOn=true;
 $("#clustermode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
   $("#clustermode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); clusterOn=b.dataset.v==="on";
 }));
+let containOn=true;
+$("#containmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+  $("#containmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); containOn=b.dataset.v==="on";
+}));
 let reverseOn=false;
 $("#revmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
   $("#revmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); reverseOn=b.dataset.v==="on";
@@ -130,7 +139,7 @@ $("#run").addEventListener("click", ()=>{
   $("#progress").classList.remove("hidden"); $("#progbar").style.width="0%"; $("#progpct").textContent="0%";
   $("#runphase").textContent="Running…";
   $("#run").disabled=true;
-  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics,cluster_spans:clusterOn,min_variant_count:+$("#minvar").value,reverse:reverseOn,include_consistent:includeAll});
+  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics,cluster_spans:clusterOn,merge_contained:containOn,min_variant_count:+$("#minvar").value,reverse:reverseOn,include_consistent:includeAll});
 });
 window.addEventListener("analyze-log", e=>clog(e.detail.msg));
 window.addEventListener("analyze-progress", e=>{
