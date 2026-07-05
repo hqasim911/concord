@@ -17,9 +17,10 @@ from .textutil import norm_edit_distance
 
 MODEL_NAME = "Helsinki-NLP/opus-mt-ar-en"
 
-# max pairwise normalized edit distance between back-translations for a group
-# to still count as "acceptable" (the variants mean the same thing).
-DEFAULT_THRESHOLD = 0.34
+# Back-translations count as the SAME (duplicate) only when their agreement
+# (1 - normalized edit distance) is at/above this. Near-exact by design: a
+# genuinely different translation stays flagged even if it is a valid synonym.
+DEFAULT_THRESHOLD = 0.9
 
 
 class Translator:
@@ -78,10 +79,12 @@ def verify_all(translator: Translator, items: List[Dict],
         for i in range(len(norm)):
             for j in range(i + 1, len(norm)):
                 maxd = max(maxd, norm_edit_distance(norm[i], norm[j]))
+        agreement = round(1.0 - maxd, 3)
         out.append({
             "ngram": it["ngram"],
-            "verdict": "acceptable" if maxd <= threshold else "inconsistent",
-            "summary": f"max divergence {round(maxd, 2)}",
+            "verdict": "duplicate" if agreement >= threshold else "distinct",
+            "agreement": agreement,
+            "summary": f"back-translation agreement {agreement}",
             "rows": [{"span": s, "note": f"“{bt}”"} for (s, bt) in pairs],
         })
     return out

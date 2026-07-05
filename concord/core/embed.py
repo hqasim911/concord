@@ -17,7 +17,11 @@ from __future__ import annotations
 from typing import List, Dict
 
 MODEL_NAME = "setu4993/LaBSE"
-DEFAULT_THRESHOLD = 0.7   # min pairwise variant cosine to count as "acceptable"
+# Identity threshold: variants are only treated as the SAME (a duplicate /
+# pipeline artifact) when their pairwise cosine is at/above this. It is
+# deliberately near-exact — genuinely different translations stay flagged as
+# inconsistent even when they are valid synonyms (terminology must be unified).
+DEFAULT_THRESHOLD = 0.98
 
 
 class Embedder:
@@ -66,8 +70,11 @@ def verify_all(embedder: Embedder, items: List[Dict],
         term_sim = [float(torch.dot(vecs[i], term)) for i in range(ns)]
         out.append({
             "ngram": it["ngram"],
-            "verdict": "acceptable" if min_sim >= threshold else "inconsistent",
-            "summary": f"min variant sim {round(min_sim, 2)}",
+            # 'duplicate' = essentially the same span (exclude); 'distinct' =
+            # genuinely different translation (keep flagged, even if synonyms).
+            "verdict": "duplicate" if min_sim >= threshold else "distinct",
+            "agreement": round(min_sim, 3),
+            "summary": f"min variant similarity {round(min_sim, 3)}",
             "rows": [{"span": s, "note": f"sim to term {round(ts, 2)}"}
                      for s, ts in zip(it["spans"], term_sim)],
         })

@@ -131,6 +131,7 @@ let prefilterOn=false;
 $("#prefiltermode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
   $("#prefiltermode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); prefilterOn=b.dataset.v==="on";
 }));
+$("#prefilterthr").addEventListener("input",e=>$("#thrlabel").textContent=e.target.value+"%");
 $("#minvar").addEventListener("input",e=>$("#minvarlabel").textContent=e.target.value+"×");
 $("#minocc").addEventListener("input",e=>$("#occlabel").textContent=e.target.value+"×");
 
@@ -143,7 +144,7 @@ $("#run").addEventListener("click", ()=>{
   $("#progress").classList.remove("hidden"); $("#progbar").style.width="0%"; $("#progpct").textContent="0%";
   $("#runphase").textContent="Running…";
   $("#run").disabled=true;
-  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics,cluster_spans:clusterOn,merge_contained:containOn,min_variant_count:+$("#minvar").value,reverse:reverseOn,include_consistent:includeAll,labse_prefilter:prefilterOn});
+  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics,cluster_spans:clusterOn,merge_contained:containOn,min_variant_count:+$("#minvar").value,reverse:reverseOn,include_consistent:includeAll,labse_prefilter:prefilterOn,prefilter_threshold:(+$("#prefilterthr").value)/100});
 });
 window.addEventListener("analyze-log", e=>clog(e.detail.msg));
 window.addEventListener("analyze-progress", e=>{
@@ -238,7 +239,7 @@ function render(){
       <div class="group-head" data-g="${gi}">
         <span class="chev">▸</span><span class="badge">${f.distinct} span${f.distinct>1?'s':''}</span>
         <span class="src">${hl(f.ngram,q)}</span>
-        <span class="meta">${f.total} occ${f.inconsistent?` · ${Math.round((f.score||0)*100)}% split`:' · consistent'}${f.verify?` · LaBSE ${esc(f.verify.verdict)}`:''}</span>
+        <span class="meta">${f.total} occ${f.inconsistent?` · ${Math.round((f.score||0)*100)}% split`:' · consistent'}${f.verify?` · LaBSE ${esc(f.verify.verdict)}${f.verify.agreement!=null?` (${f.verify.agreement})`:''}`:''}</span>
         ${f.inconsistent?`<button class="whybtn" data-g="${gi}">why flagged?</button>`:''}
         <button class="llmbtn ${$("#llm-status").dataset.ok?'':'hidden'}" data-g="${gi}">LLM check</button>
       </div>
@@ -409,7 +410,7 @@ $("#mtall").addEventListener("click", async ()=>{
   document.querySelectorAll("#results .group").forEach((g,i)=>{
     const f=lastRendered[i]; if(!f) return; const v=by.get(f.ngram); if(!v) return;
     const out=g.querySelector(".mtout"); if(!out) return;
-    out.classList.remove("hidden"); out.classList.toggle("bad", v.verdict==="inconsistent");
+    out.classList.remove("hidden"); out.classList.toggle("bad", v.verdict==="distinct");
     const rows=v.rows.map(x=>`<span dir="rtl">${esc(x.span)}</span> → ${esc(x.note)}`).join("<br>");
     out.innerHTML=`<b>${label}: ${v.verdict}</b> · ${esc(v.summary)} <span class="hint">(advisory)</span><div class="bt">${rows}</div>`;
   });

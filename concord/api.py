@@ -141,7 +141,9 @@ class ConcordAPI:
                                {"done": done, "total": total, "phase": "align"})
                 flags = engine.analyze(self._segments, progress=prog)
                 if cfg.get("labse_prefilter"):
-                    flags = self._labse_prefilter(flags, ec.include_consistent)
+                    flags = self._labse_prefilter(
+                        flags, ec.include_consistent,
+                        float(cfg.get("prefilter_threshold", 0.98)))
                 self._flags = flags
                 inc = sum(1 for f in flags if self._is_inconsistent(f))
                 self._log(f"Grouped {len(flags)} n-gram(s) — {inc} inconsistent")
@@ -173,15 +175,18 @@ class ConcordAPI:
     @staticmethod
     def _is_inconsistent(f) -> bool:
         """A flag is inconsistent if it has >=2 spans and the LaBSE pre-filter
-        (if run) did not clear it as acceptable."""
+        (if run) did not clear it as a near-identical duplicate. Variants that
+        merely mean similar things (valid synonyms) stay inconsistent."""
         if f.distinct < 2:
             return False
-        return not (f.verify and f.verify.get("verdict") == "acceptable")
+        return not (f.verify and f.verify.get("cleared"))
 
-    def _labse_prefilter(self, flags, include_consistent):
+    def _labse_prefilter(self, flags, include_consistent, threshold=0.98):
         """Verify each candidate inconsistent flag with LaBSE before results are
-        produced. Flags LaBSE judges 'acceptable' are cleared: dropped entirely,
-        or (in include-all mode) downgraded to consistent."""
+        produced. Only flags whose variants are NEAR-IDENTICAL (similarity >=
+        threshold — a pipeline duplicate/artifact) are cleared: dropped, or (in
+        include-all mode) downgraded to consistent. Genuinely different spans
+        stay flagged even if they are semantically acceptable synonyms."""
         from .core import embed as emb_mod
         items = [{"ngram": f.ngram, "spans": [v.span for v in f.variants]}
                  for f in flags if f.distinct >= 2]
@@ -191,20 +196,24 @@ class ConcordAPI:
             self._log("LaBSE pre-filter: loading LaBSE (~1.8GB)…")
             self._embedder = emb_mod.Embedder()
             self._log("LaBSE ready")
-        self._log(f"LaBSE pre-filter: verifying {len(items)} candidate flag(s)…")
-        vmap = {v["ngram"]: v for v in emb_mod.verify_all(self._embedder, items)}
+        self._log(f"LaBSE pre-filter: verifying {len(items)} flag(s) "
+                  f"at identity threshold {threshold:.2f}…")
+        vmap = {v["ngram"]: v
+                for v in emb_mod.verify_all(self._embedder, items, threshold)}
 
         kept, cleared = [], 0
         for f in flags:
             v = vmap.get(f.ngram)
             if v is not None:
+                v["cleared"] = (v["verdict"] == "duplicate")
                 f.verify = v
-                if v["verdict"] == "acceptable":
+                if v["cleared"]:
                     cleared += 1
                     if not include_consistent:
                         continue
             kept.append(f)
-        self._log(f"LaBSE pre-filter: cleared {cleared} false positive(s)")
+        self._log(f"LaBSE pre-filter: cleared {cleared} near-identical "
+                  f"duplicate(s); kept the rest as inconsistent")
         kept.sort(key=lambda f: (self._is_inconsistent(f), f.score, f.total),
                   reverse=True)
         return kept

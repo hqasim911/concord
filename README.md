@@ -130,9 +130,13 @@ python run.py
     download and more human-readable, but noisier on short spans.
   Both are heuristic/advisory, run locally, and need no API key.
 - **LaBSE pre-filter** (Settings) — run LaBSE *during* analysis as a precision
-  filter: candidate inconsistent flags LaBSE judges acceptable are cleared
-  before results are produced (dropped, or downgraded to consistent in
-  all-n-grams mode). Surviving flags show a LaBSE verdict badge.
+  filter. It clears a candidate flag **only when its variants are near-identical**
+  (cosine ≥ the identity threshold, default 98%) — i.e. the same translation
+  rendered slightly differently (a pipeline duplicate/artifact). Genuinely
+  different translations stay flagged **even when they are valid synonyms**,
+  because terminology should still be unified. Cleared flags are dropped (or
+  downgraded to consistent in all-n-grams mode); survivors show a `distinct`
+  badge with the similarity score.
 
 ## Headless test (no GUI)
 
