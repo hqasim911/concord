@@ -129,6 +129,12 @@ python run.py
     to English; agreeing ⇒ likely acceptable, diverging ⇒ inconsistent. Lighter
     download and more human-readable, but noisier on short spans.
   Both are heuristic/advisory, run locally, and need no API key.
+- **Term-faithfulness filter** (Settings) — catches *alignment errors*: scores
+  each Arabic variant against the **English source term** with LaBSE and drops
+  variants that don't actually translate it (e.g. the aligner mis-links
+  `brand` → `لون`/color, sim 0.49). If a flag drops below two faithful
+  variants it was a false positive → removed (or downgraded to consistent).
+  Dropped spans are shown. Threshold is a Settings slider (default 60%).
 - **LaBSE pre-filter** (Settings) — run LaBSE *during* analysis as a precision
   filter. It clears a candidate flag **only when its variants are near-identical**
   (cosine ≥ the identity threshold, default 98%) — i.e. the same translation

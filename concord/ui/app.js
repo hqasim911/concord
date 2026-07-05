@@ -132,6 +132,11 @@ $("#prefiltermode").querySelectorAll("button").forEach(b=>b.addEventListener("cl
   $("#prefiltermode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); prefilterOn=b.dataset.v==="on";
 }));
 $("#prefilterthr").addEventListener("input",e=>$("#thrlabel").textContent=e.target.value+"%");
+let faithOn=false;
+$("#faithmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+  $("#faithmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); faithOn=b.dataset.v==="on";
+}));
+$("#faiththr").addEventListener("input",e=>$("#faithlabel").textContent=e.target.value+"%");
 $("#minvar").addEventListener("input",e=>$("#minvarlabel").textContent=e.target.value+"×");
 $("#minocc").addEventListener("input",e=>$("#occlabel").textContent=e.target.value+"×");
 
@@ -144,7 +149,7 @@ $("#run").addEventListener("click", ()=>{
   $("#progress").classList.remove("hidden"); $("#progbar").style.width="0%"; $("#progpct").textContent="0%";
   $("#runphase").textContent="Running…";
   $("#run").disabled=true;
-  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics,cluster_spans:clusterOn,merge_contained:containOn,min_variant_count:+$("#minvar").value,reverse:reverseOn,include_consistent:includeAll,labse_prefilter:prefilterOn,prefilter_threshold:(+$("#prefilterthr").value)/100});
+  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics,cluster_spans:clusterOn,merge_contained:containOn,min_variant_count:+$("#minvar").value,reverse:reverseOn,include_consistent:includeAll,labse_prefilter:prefilterOn,prefilter_threshold:(+$("#prefilterthr").value)/100,faithfulness_filter:faithOn,faithfulness_threshold:(+$("#faiththr").value)/100});
 });
 window.addEventListener("analyze-log", e=>clog(e.detail.msg));
 window.addEventListener("analyze-progress", e=>{
@@ -243,6 +248,7 @@ function render(){
         ${f.inconsistent?`<button class="whybtn" data-g="${gi}">why flagged?</button>`:''}
         <button class="llmbtn ${$("#llm-status").dataset.ok?'':'hidden'}" data-g="${gi}">LLM check</button>
       </div>
+      ${f.dropped&&f.dropped.length?`<div class="dropnote">Dropped ${f.dropped.length} mis-aligned span(s) — not a translation of the term: ${f.dropped.map(d=>`<span dir="rtl">${esc(d.span)}</span> (sim ${d.sim})`).join(", ")}</div>`:''}
       <div class="variants hidden">${vars}</div>
       <div class="whyout hidden" data-g="${gi}"></div>
       <div class="mtout hidden" data-g="${gi}"></div>

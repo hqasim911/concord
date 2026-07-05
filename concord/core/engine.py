@@ -50,6 +50,7 @@ class Flag:
     variants: List[Variant]
     score: float = 0.0                # inconsistency score in [0, 1]
     verify: Optional[dict] = None     # local-verifier verdict (LaBSE pre-filter)
+    dropped: Optional[list] = None    # variants removed as mis-aligned
 
     @property
     def distinct(self):

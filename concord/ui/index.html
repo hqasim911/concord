@@ -126,6 +126,8 @@
   .mtout{padding:8px 18px 12px 26px;font-size:13px;color:var(--jade-deep);background:#f2f7f3;border-top:1px solid var(--line)}
   .mtout.bad{color:var(--rust)}
   .mtout .bt{font-family:ui-monospace,monospace;font-size:12px;color:var(--mut);margin-top:4px}
+  .dropnote{padding:8px 18px 8px 26px;font-size:12.5px;color:var(--amber);
+    background:#fdf6ea;border-top:1px solid var(--line)}
 
   /* why-flagged codepoint diff */
   .whybtn{border:1px solid var(--jade-deep);background:transparent;color:var(--jade-deep);
@@ -290,6 +292,12 @@
           <label>Identity threshold</label>
           <div><input type="range" id="prefilterthr" min="90" max="100" value="98"><span class="val" id="thrlabel">98%</span>
             <span class="hint">exclude a flag only if its variants are ≥ this similar — synonyms stay flagged</span></div>
+          <label>Faithfulness filter</label>
+          <div><div class="switch" id="faithmode"><button data-v="off" class="on">Off</button><button data-v="on">On</button></div>
+            <span class="hint">drop variants that don't translate the source term (aligner errors, e.g. brand→لون)</span></div>
+          <label>Faithfulness threshold</label>
+          <div><input type="range" id="faiththr" min="30" max="90" value="60"><span class="val" id="faithlabel">60%</span>
+            <span class="hint">a variant below this similarity to the source term is treated as mis-aligned</span></div>
         </div>
       </div>
 

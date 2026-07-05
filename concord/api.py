@@ -140,6 +140,10 @@ class ConcordAPI:
                     self._emit("analyze-progress",
                                {"done": done, "total": total, "phase": "align"})
                 flags = engine.analyze(self._segments, progress=prog)
+                if cfg.get("faithfulness_filter"):
+                    flags = self._faithfulness_filter(
+                        flags, ec.include_consistent,
+                        float(cfg.get("faithfulness_threshold", 0.6)))
                 if cfg.get("labse_prefilter"):
                     flags = self._labse_prefilter(
                         flags, ec.include_consistent,
@@ -180,6 +184,52 @@ class ConcordAPI:
         if f.distinct < 2:
             return False
         return not (f.verify and f.verify.get("cleared"))
+
+    def _faithfulness_filter(self, flags, include_consistent, threshold=0.6):
+        """Drop variant spans that don't actually translate the source n-gram
+        (aligner errors, e.g. brand -> لون). If a flag drops below two faithful
+        variants it is no longer an inconsistency: removed, or (in include-all
+        mode) kept as a consistent single-translation term."""
+        from .core import embed as emb_mod
+        from .core.engine import _entropy_score
+        items = [{"ngram": f.ngram, "spans": [v.span for v in f.variants]}
+                 for f in flags if f.distinct >= 2]
+        if not items:
+            return flags
+        if self._embedder is None:
+            self._log("Faithfulness filter: loading LaBSE (~1.8GB)…")
+            self._embedder = emb_mod.Embedder()
+            self._log("LaBSE ready")
+        self._log(f"Faithfulness filter: checking {len(items)} flag(s) against "
+                  f"the source term (threshold {threshold:.2f})…")
+        rep = {r["ngram"]: r for r in
+               emb_mod.term_faithfulness(self._embedder, items, threshold)}
+
+        kept, n_drop, n_fp = [], 0, 0
+        for f in flags:
+            r = rep.get(f.ngram)
+            if r is None:
+                kept.append(f)
+                continue
+            faithful = [v for v, info in zip(f.variants, r["spans"])
+                        if info["faithful"]]
+            dropped = [{"span": info["span"], "sim": info["sim"]}
+                       for info in r["spans"] if not info["faithful"]]
+            if dropped:
+                n_drop += len(dropped)
+                f.variants = faithful
+                f.dropped = dropped
+                f.score = _entropy_score([v.count for v in faithful]) \
+                    if len(faithful) >= 2 else 0.0
+                if len(faithful) < 2:
+                    n_fp += 1
+            if len(faithful) >= 2 or (len(faithful) == 1 and include_consistent):
+                kept.append(f)
+        self._log(f"Faithfulness: dropped {n_drop} mis-aligned variant(s), "
+                  f"removed {n_fp} false-positive flag(s)")
+        kept.sort(key=lambda f: (self._is_inconsistent(f), f.score, f.total),
+                  reverse=True)
+        return kept
 
     def _labse_prefilter(self, flags, include_consistent, threshold=0.98):
         """Verify each candidate inconsistent flag with LaBSE before results are
@@ -225,7 +275,7 @@ class ConcordAPI:
                 "ngram": f.ngram, "distinct": f.distinct, "total": f.total,
                 "score": round(f.score, 3),
                 "inconsistent": self._is_inconsistent(f),
-                "verify": f.verify,
+                "verify": f.verify, "dropped": f.dropped,
                 "variants": [{
                     "span": v.span, "count": v.count,
                     "occurrences": [{
