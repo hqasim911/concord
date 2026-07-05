@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xliff version="1.2">
+ <file source-language="en" target-language="ar" datatype="plaintext" original="sample-test">
+  <body>
+   <!-- "main dashboard": varies ONLY by the definite article (اللوحة الرئيسية vs لوحة رئيسية) -->
+   <trans-unit id="1"><source>Go to the main dashboard now.</source><target>انتقل إلى اللوحة الرئيسية الآن.</target></trans-unit>
+   <trans-unit id="2"><source>The main dashboard shows statistics.</source><target>لوحة رئيسية تعرض الإحصاءات.</target></trans-unit>
+   <trans-unit id="3"><source>Open the main dashboard again.</source><target>افتح اللوحة الرئيسية مرة أخرى.</target></trans-unit>
+
+   <!-- "cancel button": GENUINE inconsistency (الإلغاء vs الإبطال) — must stay flagged -->
+   <trans-unit id="4"><source>Click the cancel button here.</source><target>انقر على زر الإلغاء هنا.</target></trans-unit>
+   <trans-unit id="5"><source>Press the cancel button twice.</source><target>اضغط على زر الإبطال مرتين.</target></trans-unit>
+   <trans-unit id="6"><source>Find the cancel button below.</source><target>ابحث عن زر الإلغاء بالأسفل.</target></trans-unit>
+
+   <!-- "save file": consistent control (should never flag) -->
+   <trans-unit id="7"><source>You can save file quickly.</source><target>يمكنك حفظ الملف بسرعة.</target></trans-unit>
+   <trans-unit id="8"><source>Please save file before exit.</source><target>يرجى حفظ الملف قبل الخروج.</target></trans-unit>
+  </body>
+ </file>
+</xliff>
