@@ -56,8 +56,18 @@ window.addEventListener("model-status", e=>{
 let fileList=[];
 $("#openfiles").addEventListener("click", async ()=>{
   const res=await api().open_files();
-  fileList=res.files||[]; renderChips(); maybeEnableRun();
+  fileList=res.files||[]; renderChips(); maybeEnableRun(); refreshViewer();
 });
+async function refreshViewer(){
+  const box=$("#viewer");
+  if(!fileList.length){ box.innerHTML=""; return; }
+  const r=await api().list_segments(2000);
+  if(!r.total){ box.innerHTML=""; $("#batchhint").textContent="of the file"; return; }
+  const note=`${r.total} segment(s)${r.shown<r.total?` · showing first ${r.shown}`:''}`;
+  box.innerHTML=`<div class="vhint">${esc(note)}</div>`+r.segments.map(s=>
+    `<div class="vrow"><span class="vi">${esc(s.sid)}</span><span class="vsrc">${esc(s.source)}</span><span class="vtgt">${esc(s.target)}</span></div>`).join("");
+  $("#batchhint").textContent=`of ${r.total} segments`;
+}
 function renderChips(){
   const box=$("#filechips"); box.innerHTML="";
   let segs=0;
@@ -70,7 +80,7 @@ function renderChips(){
   });
   $("#filehint").textContent = fileList.length ? `${fileList.length} file(s), ${segs} segments loaded.` : "Select one or more .xlf / .xliff files.";
   box.querySelectorAll(".x").forEach(x=>x.addEventListener("click",async ev=>{
-    const r=await api().remove_file(ev.target.dataset.n); fileList=r.files||[]; renderChips(); maybeEnableRun();
+    const r=await api().remove_file(ev.target.dataset.n); fileList=r.files||[]; renderChips(); maybeEnableRun(); refreshViewer();
   }));
 }
 function maybeEnableRun(){
@@ -155,7 +165,7 @@ $("#run").addEventListener("click", ()=>{
   $("#progress").classList.remove("hidden"); $("#progbar").style.width="0%"; $("#progpct").textContent="0%";
   $("#runphase").textContent="Running…";
   $("#run").disabled=true;
-  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics,cluster_spans:clusterOn,merge_contained:containOn,min_variant_count:+$("#minvar").value,reverse:reverseOn,include_consistent:includeAll,labse_prefilter:prefilterOn,prefilter_threshold:(+$("#prefilterthr").value)/100,faithfulness_filter:faithOn,faithfulness_threshold:(+$("#faiththr").value)/100,check_termbase:checkTB});
+  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics,cluster_spans:clusterOn,merge_contained:containOn,min_variant_count:+$("#minvar").value,reverse:reverseOn,include_consistent:includeAll,labse_prefilter:prefilterOn,prefilter_threshold:(+$("#prefilterthr").value)/100,faithfulness_filter:faithOn,faithfulness_threshold:(+$("#faiththr").value)/100,check_termbase:checkTB,batch_size:+$("#batchsize").value,batch_num:+$("#batchnum").value});
 });
 window.addEventListener("analyze-log", e=>clog(e.detail.msg));
 window.addEventListener("analyze-progress", e=>{

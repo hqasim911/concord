@@ -96,6 +96,17 @@ class ConcordAPI:
                           for n, f in self._files.items()],
                 "added": added}
 
+    def list_segments(self, limit: int = 2000) -> dict:
+        """Segments for the viewer (capped at `limit` rendered rows)."""
+        segs = self._segments
+        shown = segs[:limit] if limit else segs
+        return {
+            "total": len(segs), "shown": len(shown),
+            "segments": [{"sid": s.sid, "file": s.file,
+                          "source": s.source, "target": s.target}
+                         for s in shown],
+        }
+
     def remove_file(self, name: str) -> dict:
         self._files.pop(name, None)
         self._rebuild_segments()
@@ -134,8 +145,17 @@ class ConcordAPI:
                     termbase=(self._termbase.check_map()
                               if cfg.get("check_termbase") else None),
                 )
+                size = int(cfg.get("batch_size", 0) or 0)
+                bnum = max(int(cfg.get("batch_num", 1) or 1), 1)
+                segs = self._segments
+                if size > 0:
+                    start = (bnum - 1) * size
+                    segs = self._segments[start:start + size]
+                    self._log(f"Batch {bnum}: segments {start}–"
+                              f"{start + len(segs)} of {len(self._segments)}")
+
                 self._log(f"Backend: {self._model_kind} / {self._model_name}")
-                self._log(f"Corpus: {len(self._segments)} segments "
+                self._log(f"Analyzing {len(segs)} segment(s) "
                           f"across {len(self._files)} file(s)")
                 self._log("Aligning unique sentence pairs…")
                 engine = ConsistencyEngine(self._aligner, ec)
@@ -143,7 +163,7 @@ class ConcordAPI:
                 def prog(done, total):
                     self._emit("analyze-progress",
                                {"done": done, "total": total, "phase": "align"})
-                flags = engine.analyze(self._segments, progress=prog)
+                flags = engine.analyze(segs, progress=prog)
                 if cfg.get("faithfulness_filter"):
                     flags = self._faithfulness_filter(
                         flags, ec.include_consistent,
@@ -159,15 +179,16 @@ class ConcordAPI:
                 reverse = []
                 if cfg.get("reverse"):
                     self._log("Reverse pass (AR→EN)…")
-                    reverse = engine.analyze_reverse(self._segments)
+                    reverse = engine.analyze_reverse(segs)
                     self._log(f"Reverse: {len(reverse)} over-loaded span(s)")
                 self._reverse = reverse
 
-                ph = self._placeholder_count()
+                from .core.xliff import placeholder_issues
+                ph = len(placeholder_issues(segs))
                 self._log(f"Placeholder issues: {ph}")
                 self._log("Done.")
                 self._emit("analyze-done", {
-                    "segments": len(self._segments),
+                    "segments": len(segs),
                     "files": len(self._files),
                     "inconsistent": inc,
                     "flags": self._flags_to_json(flags),

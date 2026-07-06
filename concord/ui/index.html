@@ -183,6 +183,18 @@
     gap:18px;align-items:start;max-width:1120px;margin:0 auto}
   .settings-side{display:flex;flex-direction:column;gap:18px}
   @media (max-width:920px){.settings-grid{grid-template-columns:1fr}}
+  .fileshead{max-width:1120px;margin:0 auto 18px}
+  input[type=number]{padding:7px 9px;border:1px solid var(--line);border-radius:6px;
+    font-family:ui-monospace,monospace;font-size:13px;background:#fff;color:var(--ink);width:96px}
+  .viewer{max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:8px;margin-top:14px;background:#fff}
+  .viewer:empty{display:none}
+  .vhint{padding:7px 12px;font-family:ui-monospace,monospace;font-size:11px;color:var(--mut);
+    background:var(--paper-2);border-bottom:1px solid var(--line);position:sticky;top:0}
+  .vrow{display:flex;gap:14px;padding:7px 12px;border-bottom:1px solid var(--paper-2);font-size:13px}
+  .vrow:last-child{border-bottom:0}
+  .vrow .vi{width:130px;flex:none;font-family:ui-monospace,monospace;font-size:10px;color:var(--mut);padding-top:2px}
+  .vrow .vsrc{flex:1;color:var(--ink)}
+  .vrow .vtgt{flex:1;direction:rtl;text-align:right}
   .settings-col{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
   .params-box .formgrid{grid-template-columns:180px 1fr;gap:14px}
   .llmsub{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
@@ -247,6 +259,17 @@
 
   <!-- ==================== PAGE 1 · SETTINGS ==================== -->
   <section class="page" id="page-settings">
+
+    <div class="card fileshead">
+      <h3>Files</h3>
+      <div class="row">
+        <button class="btn" id="openfiles">Open XLIFF files…</button>
+        <span class="hint" id="filehint">Select one or more .xlf / .xliff files.</span>
+      </div>
+      <div id="filechips" class="files"></div>
+      <div class="viewer" id="viewer"></div>
+    </div>
+
     <div class="settings-grid">
 
       <!-- ===== LEFT: metrics box ===== -->
@@ -290,6 +313,10 @@
           <div><input type="range" id="faiththr" min="30" max="90" value="60"><span class="val" id="faithlabel">60%</span></div>
           <label>Check against term base <span class="help" data-tip="Also flag any phrase whose translation differs from a previously approved decision in your saved term base — even if this file is internally consistent.">?</span></label>
           <div><div class="switch" id="tbmode"><button data-v="off" class="on">Off</button><button data-v="on">On</button></div></div>
+          <label>Batch size <span class="help" data-tip="Analyze only this many segments per run (0 = all). Approve terms from one batch, then check later batches against the saved term base.">?</span></label>
+          <div><input type="number" id="batchsize" min="0" step="1000" value="0"><span class="hint">segments · 0 = all</span></div>
+          <label>Batch number <span class="help" data-tip="Which chunk to analyze with the batch size above: batch 1 = first N segments, batch 2 = next N, and so on.">?</span></label>
+          <div><input type="number" id="batchnum" min="1" step="1" value="1"><span class="hint" id="batchhint">of the file</span></div>
         </div>
       </div>
 
@@ -337,15 +364,6 @@
               <span class="hint" id="llm-status"></span>
             </div>
           </div>
-        </div>
-
-        <div class="card">
-          <h3>Files</h3>
-          <div class="row">
-            <button class="btn" id="openfiles">Open XLIFF files…</button>
-            <span class="hint" id="filehint">Select one or more .xlf / .xliff files.</span>
-          </div>
-          <div id="filechips" class="files"></div>
         </div>
 
         <div class="card">
