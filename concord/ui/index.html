@@ -197,6 +197,9 @@
   .vrow .vtgt{flex:1;direction:rtl;text-align:right}
   .settings-col{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
   .params-box .formgrid{grid-template-columns:180px 1fr;gap:14px}
+  .mgroup{margin:20px 0 12px;font-size:11px;letter-spacing:.13em;text-transform:uppercase;
+    color:var(--jade);font-family:ui-monospace,monospace;border-bottom:1px solid var(--line);padding-bottom:6px}
+  .mgroup:first-of-type{margin-top:8px}
   .llmsub{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
   .llmsub h4{margin:0 0 10px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);font-family:ui-monospace,monospace}
   .llmsub .body{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
@@ -275,6 +278,8 @@
       <!-- ===== LEFT: metrics box ===== -->
       <div class="card params-box">
         <h3>Metrics</h3>
+
+        <h4 class="mgroup">Phrases &amp; scope</h4>
         <div class="formgrid">
           <label>N-gram length <span class="help" data-tip="How many consecutive source words make up a phrase to check — e.g. 2–3 checks 2- and 3-word phrases.">?</span></label>
           <div>
@@ -289,20 +294,32 @@
           <div><div class="switch" id="swmode"><button data-v="off">Off</button><button data-v="trim" class="on">Trim edges</button><button data-v="strict">Strict</button></div></div>
           <label>Min occurrences <span class="help" data-tip="Only report a phrase that appears at least this many times across the loaded files.">?</span></label>
           <div><input type="range" id="minocc" min="2" max="20" value="2"><span class="val" id="occlabel">2×</span></div>
+          <label>Direction <span class="help" data-tip="EN→AR: one English phrase with several Arabic translations. + AR→EN also flags one Arabic span reused for several English phrases (an over-loaded term).">?</span></label>
+          <div><div class="switch" id="revmode"><button data-v="off" class="on">EN→AR</button><button data-v="on">+ AR→EN</button></div></div>
+          <label>Result scope <span class="help" data-tip="All n-grams lists every phrase with inconsistent ones highlighted; Inconsistent only shows just the flagged ones.">?</span></label>
+          <div><div class="switch" id="incmode"><button data-v="all" class="on">All n-grams</button><button data-v="inc">Inconsistent only</button></div></div>
+        </div>
+
+        <h4 class="mgroup">Text normalization</h4>
+        <div class="formgrid">
           <label>Arabic normalization <span class="help" data-tip="Fold ة→ه and unify alef/hamza/diacritics so trivial spelling differences are not treated as inconsistencies.">?</span></label>
           <div><div class="switch" id="taamode"><button data-v="on" class="on">Fold ة→ه</button><button data-v="off">Keep</button></div></div>
           <label>Article / clitic folding <span class="help" data-tip="Strip the definite article الـ and attached clitics (وال، بال، لل…) so الزر and زر count as the same term.">?</span></label>
           <div><div class="switch" id="clitmode"><button data-v="on" class="on">Strip الـ</button><button data-v="off">Keep</button></div></div>
+        </div>
+
+        <h4 class="mgroup">Grouping &amp; noise reduction</h4>
+        <div class="formgrid">
           <label>Merge near-duplicates <span class="help" data-tip="Merge target spans that differ by only a character or two before counting how many distinct translations exist.">?</span></label>
           <div><div class="switch" id="clustermode"><button data-v="on" class="on">On</button><button data-v="off">Off</button></div></div>
           <label>Contained-fragment merge <span class="help" data-tip="If one translation is a contiguous fragment of a longer one (a partial alignment, e.g. خط inside خط اساس جدول زمني), fold it into the longer span.">?</span></label>
           <div><div class="switch" id="containmode"><button data-v="on" class="on">On</button><button data-v="off">Off</button></div></div>
           <label>Min variant count <span class="help" data-tip="Ignore a translation seen fewer than this many times — filters one-off alignment noise.">?</span></label>
           <div><input type="range" id="minvar" min="1" max="10" value="1"><span class="val" id="minvarlabel">1×</span></div>
-          <label>Direction <span class="help" data-tip="EN→AR: one English phrase with several Arabic translations. + AR→EN also flags one Arabic span reused for several English phrases (an over-loaded term).">?</span></label>
-          <div><div class="switch" id="revmode"><button data-v="off" class="on">EN→AR</button><button data-v="on">+ AR→EN</button></div></div>
-          <label>Result scope <span class="help" data-tip="All n-grams lists every phrase with inconsistent ones highlighted; Inconsistent only shows just the flagged ones.">?</span></label>
-          <div><div class="switch" id="incmode"><button data-v="all" class="on">All n-grams</button><button data-v="inc">Inconsistent only</button></div></div>
+        </div>
+
+        <h4 class="mgroup">Verification · LaBSE</h4>
+        <div class="formgrid">
           <label>LaBSE pre-filter <span class="help" data-tip="During analysis, use LaBSE to drop flags whose variants are near-identical duplicates (same translation, slightly different text). Loads the LaBSE model, ~1.8GB.">?</span></label>
           <div><div class="switch" id="prefiltermode"><button data-v="off" class="on">Off</button><button data-v="on">On</button></div></div>
           <label>Identity threshold <span class="help" data-tip="How similar two variants must be to be treated as the same and excluded. 98% ≈ near-exact; lower risks merging real synonyms.">?</span></label>
@@ -311,12 +328,20 @@
           <div><div class="switch" id="faithmode"><button data-v="off" class="on">Off</button><button data-v="on">On</button></div></div>
           <label>Faithfulness threshold <span class="help" data-tip="A variant scoring below this similarity to the source term is treated as mis-aligned and dropped.">?</span></label>
           <div><input type="range" id="faiththr" min="30" max="90" value="60"><span class="val" id="faithlabel">60%</span></div>
+        </div>
+
+        <h4 class="mgroup">Consistency over time</h4>
+        <div class="formgrid">
           <label>Check against term base <span class="help" data-tip="Also flag any phrase whose translation differs from a previously approved decision in your saved term base — even if this file is internally consistent.">?</span></label>
           <div><div class="switch" id="tbmode"><button data-v="off" class="on">Off</button><button data-v="on">On</button></div></div>
+        </div>
+
+        <h4 class="mgroup">Batching (large files)</h4>
+        <div class="formgrid">
           <label>Batch size <span class="help" data-tip="Analyze only this many segments per run (0 = all). Approve terms from one batch, then check later batches against the saved term base.">?</span></label>
-          <div><input type="number" id="batchsize" min="0" step="1000" value="0"><span class="hint">segments · 0 = all</span></div>
-          <label>Batch number <span class="help" data-tip="Which chunk to analyze with the batch size above: batch 1 = first N segments, batch 2 = next N, and so on.">?</span></label>
-          <div><input type="number" id="batchnum" min="1" step="1" value="1"><span class="hint" id="batchhint">of the file</span></div>
+          <div><input type="number" id="batchsize" min="0" step="1000" value="0"><span class="hint">segments per pass · 0 = whole file</span></div>
+          <label>Batch number <span class="help" data-tip="Which chunk to analyze: batch 1 = first N segments, batch 2 = the next N, etc. Bump this to move through a large file one pass at a time.">?</span></label>
+          <div><input type="number" id="batchnum" min="1" step="1" value="1"><span class="hint" id="batchhint">whole file</span></div>
         </div>
       </div>
 

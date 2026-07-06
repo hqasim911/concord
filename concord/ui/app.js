@@ -66,8 +66,19 @@ async function refreshViewer(){
   const note=`${r.total} segment(s)${r.shown<r.total?` · showing first ${r.shown}`:''}`;
   box.innerHTML=`<div class="vhint">${esc(note)}</div>`+r.segments.map(s=>
     `<div class="vrow"><span class="vi">${esc(s.sid)}</span><span class="vsrc">${esc(s.source)}</span><span class="vtgt">${esc(s.target)}</span></div>`).join("");
-  $("#batchhint").textContent=`of ${r.total} segments`;
+  window.segTotal=r.total; updateBatchHint();
 }
+function updateBatchHint(){
+  const size=+$("#batchsize").value, num=Math.max(+$("#batchnum").value||1,1), total=window.segTotal||0;
+  const el=$("#batchhint");
+  if(size>0){
+    const start=(num-1)*size, end=total?Math.min(start+size,total):start+size;
+    el.textContent = start>=(total||Infinity) && total ? `past end (only ${total} segments)` :
+      `segments ${start+1}–${end}${total?` of ${total}`:''}`;
+  } else { el.textContent = total?`whole file (${total} segments)`:"whole file"; }
+}
+$("#batchsize").addEventListener("input",updateBatchHint);
+$("#batchnum").addEventListener("input",updateBatchHint);
 function renderChips(){
   const box=$("#filechips"); box.innerHTML="";
   let segs=0;
