@@ -178,8 +178,29 @@
   .nav .step:disabled{opacity:.5;cursor:not-allowed}
   .page{padding-top:8px}
 
-  /* settings page: vertical column of cards */
+  /* settings page: metrics box left, everything else right */
+  .settings-grid{display:grid;grid-template-columns:minmax(430px,1.15fr) minmax(330px,0.85fr);
+    gap:18px;align-items:start;max-width:1120px;margin:0 auto}
+  .settings-side{display:flex;flex-direction:column;gap:18px}
+  @media (max-width:920px){.settings-grid{grid-template-columns:1fr}}
   .settings-col{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+  .params-box .formgrid{grid-template-columns:180px 1fr;gap:14px}
+  .llmsub{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+  .llmsub h4{margin:0 0 10px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);font-family:ui-monospace,monospace}
+  .llmsub .body{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  .llmsub input,.llmsub select{padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-family:ui-monospace,monospace;font-size:12px;background:#fff}
+  .llmsub .f{display:flex;flex-direction:column;gap:5px}
+  .llmsub .f label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--mut);font-family:ui-monospace,monospace}
+
+  /* metric help tooltip */
+  .help{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;
+    border-radius:50%;border:1px solid var(--mut);color:var(--mut);font-size:10px;font-weight:700;
+    cursor:help;position:relative;margin-left:6px;font-family:ui-monospace,monospace;vertical-align:middle}
+  .help:hover{border-color:var(--jade);color:var(--jade)}
+  .help:hover::after{content:attr(data-tip);position:absolute;left:0;top:150%;z-index:60;width:250px;
+    background:var(--ink);color:var(--paper);font-weight:400;font-size:12px;line-height:1.5;
+    padding:9px 12px;border-radius:8px;box-shadow:0 10px 26px var(--shadow);
+    white-space:normal;text-transform:none;letter-spacing:normal;text-align:left}
   .card{border:1px solid var(--line);border-radius:10px;background:var(--paper-2);padding:18px 20px}
   .card h3{margin:0 0 14px;font-size:13px;letter-spacing:.12em;text-transform:uppercase;
     color:var(--jade-deep);font-family:ui-monospace,monospace}
@@ -188,7 +209,7 @@
   .formgrid > label{font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--mut);
     font-family:ui-monospace,monospace;text-align:right}
   .formgrid > div{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .analyze-row{max-width:760px;margin:20px auto 0;display:flex;align-items:center;gap:14px}
+  .analyze-row{max-width:1120px;margin:20px auto 0;display:flex;align-items:center;gap:14px}
   .analyze-row .btn{font-size:16px;padding:11px 26px}
 
   /* run page console */
@@ -226,63 +247,13 @@
 
   <!-- ==================== PAGE 1 · SETTINGS ==================== -->
   <section class="page" id="page-settings">
-    <div class="settings-col">
+    <div class="settings-grid">
 
-      <div class="card">
-        <h3>Alignment model</h3>
-        <div class="modelbar">
-          <span class="status-dot" id="mdot"></span>
-          <span id="mtext" style="flex:1">Alignment model not loaded.</span>
-          <button class="btn" id="loadmodel">Load model</button>
-        </div>
-        <div class="formgrid" style="margin-top:14px">
-          <label>Backend</label>
-          <div class="switch" id="backendpick">
-            <button data-v="simalign" class="on">SimAlign</button>
-            <button data-v="awesome">awesome-align</button>
-            <button data-v="ensemble">Ensemble</button>
-          </div>
-          <label>Base model</label>
-          <div class="switch" id="modelpick">
-            <button data-v="bert" class="on">mBERT (faster)</button>
-            <button data-v="xlmr">XLM-R (accuracy)</button>
-          </div>
-          <label>Ensemble mode</label>
-          <div class="switch" id="ensmode">
-            <button data-v="intersect" class="on">Intersect (precise)</button>
-            <button data-v="union">Union (recall)</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <h3>Files</h3>
-        <div class="row">
-          <button class="btn" id="openfiles">Open XLIFF files…</button>
-          <span class="hint" id="filehint">Select one or more .xlf / .xliff files.</span>
-        </div>
-        <div id="filechips" class="files"></div>
-      </div>
-
-      <div class="card">
-        <h3>Approved term base</h3>
+      <!-- ===== LEFT: metrics box ===== -->
+      <div class="card params-box">
+        <h3>Metrics</h3>
         <div class="formgrid">
-          <label>Check against term base</label>
-          <div><div class="switch" id="tbmode"><button data-v="off" class="on">Off</button><button data-v="on">On</button></div>
-            <span class="hint" id="tbcount">0 approved terms</span></div>
-        </div>
-        <div class="row" style="margin-top:12px">
-          <button class="btn ghost" id="tbview">View / manage</button>
-          <button class="btn ghost" id="tbclear">Clear all</button>
-          <span class="hint">saved to ~/.concord/termbase.json · persists across sessions</span>
-        </div>
-        <div id="tblist"></div>
-      </div>
-
-      <div class="card">
-        <h3>Parameters</h3>
-        <div class="formgrid">
-          <label>N-gram length</label>
+          <label>N-gram length <span class="help" data-tip="How many consecutive source words make up a phrase to check — e.g. 2–3 checks 2- and 3-word phrases.">?</span></label>
           <div>
             <div class="switch" id="nmode"><button data-v="range" class="on">Range</button><button data-v="exact">Exact</button></div>
             <div class="nchips" id="nchips">
@@ -291,56 +262,104 @@
             </div>
             <span class="val" id="nlabel">2–3 words</span>
           </div>
-          <label>Stopwords</label>
+          <label>Stopwords <span class="help" data-tip="How common words (the, a, of…) are handled at phrase edges — Off: keep them; Trim: shave them off the ends; Strict: drop any phrase containing one.">?</span></label>
           <div><div class="switch" id="swmode"><button data-v="off">Off</button><button data-v="trim" class="on">Trim edges</button><button data-v="strict">Strict</button></div></div>
-          <label>Min occurrences</label>
+          <label>Min occurrences <span class="help" data-tip="Only report a phrase that appears at least this many times across the loaded files.">?</span></label>
           <div><input type="range" id="minocc" min="2" max="20" value="2"><span class="val" id="occlabel">2×</span></div>
-          <label>Arabic normalization</label>
+          <label>Arabic normalization <span class="help" data-tip="Fold ة→ه and unify alef/hamza/diacritics so trivial spelling differences are not treated as inconsistencies.">?</span></label>
           <div><div class="switch" id="taamode"><button data-v="on" class="on">Fold ة→ه</button><button data-v="off">Keep</button></div></div>
-          <label>Article / clitic folding</label>
+          <label>Article / clitic folding <span class="help" data-tip="Strip the definite article الـ and attached clitics (وال، بال، لل…) so الزر and زر count as the same term.">?</span></label>
           <div><div class="switch" id="clitmode"><button data-v="on" class="on">Strip الـ</button><button data-v="off">Keep</button></div></div>
-          <label>Merge near-duplicates</label>
+          <label>Merge near-duplicates <span class="help" data-tip="Merge target spans that differ by only a character or two before counting how many distinct translations exist.">?</span></label>
           <div><div class="switch" id="clustermode"><button data-v="on" class="on">On</button><button data-v="off">Off</button></div></div>
-          <label>Contained-fragment merge</label>
+          <label>Contained-fragment merge <span class="help" data-tip="If one translation is a contiguous fragment of a longer one (a partial alignment, e.g. خط inside خط اساس جدول زمني), fold it into the longer span.">?</span></label>
           <div><div class="switch" id="containmode"><button data-v="on" class="on">On</button><button data-v="off">Off</button></div></div>
-          <label>Min variant count</label>
+          <label>Min variant count <span class="help" data-tip="Ignore a translation seen fewer than this many times — filters one-off alignment noise.">?</span></label>
           <div><input type="range" id="minvar" min="1" max="10" value="1"><span class="val" id="minvarlabel">1×</span></div>
-          <label>Direction</label>
+          <label>Direction <span class="help" data-tip="EN→AR: one English phrase with several Arabic translations. + AR→EN also flags one Arabic span reused for several English phrases (an over-loaded term).">?</span></label>
           <div><div class="switch" id="revmode"><button data-v="off" class="on">EN→AR</button><button data-v="on">+ AR→EN</button></div></div>
-          <label>Result scope</label>
+          <label>Result scope <span class="help" data-tip="All n-grams lists every phrase with inconsistent ones highlighted; Inconsistent only shows just the flagged ones.">?</span></label>
           <div><div class="switch" id="incmode"><button data-v="all" class="on">All n-grams</button><button data-v="inc">Inconsistent only</button></div></div>
-          <label>LaBSE pre-filter</label>
-          <div><div class="switch" id="prefiltermode"><button data-v="off" class="on">Off</button><button data-v="on">On</button></div>
-            <span class="hint">during analysis, drop only near-identical duplicate spans (loads LaBSE, ~1.8GB)</span></div>
-          <label>Identity threshold</label>
-          <div><input type="range" id="prefilterthr" min="90" max="100" value="98"><span class="val" id="thrlabel">98%</span>
-            <span class="hint">exclude a flag only if its variants are ≥ this similar — synonyms stay flagged</span></div>
-          <label>Faithfulness filter</label>
-          <div><div class="switch" id="faithmode"><button data-v="off" class="on">Off</button><button data-v="on">On</button></div>
-            <span class="hint">drop variants that don't translate the source term (aligner errors, e.g. brand→لون)</span></div>
-          <label>Faithfulness threshold</label>
-          <div><input type="range" id="faiththr" min="30" max="90" value="60"><span class="val" id="faithlabel">60%</span>
-            <span class="hint">a variant below this similarity to the source term is treated as mis-aligned</span></div>
+          <label>LaBSE pre-filter <span class="help" data-tip="During analysis, use LaBSE to drop flags whose variants are near-identical duplicates (same translation, slightly different text). Loads the LaBSE model, ~1.8GB.">?</span></label>
+          <div><div class="switch" id="prefiltermode"><button data-v="off" class="on">Off</button><button data-v="on">On</button></div></div>
+          <label>Identity threshold <span class="help" data-tip="How similar two variants must be to be treated as the same and excluded. 98% ≈ near-exact; lower risks merging real synonyms.">?</span></label>
+          <div><input type="range" id="prefilterthr" min="90" max="100" value="98"><span class="val" id="thrlabel">98%</span></div>
+          <label>Faithfulness filter <span class="help" data-tip="Use LaBSE to drop a variant that does not actually translate the source term (an alignment error, e.g. brand→لون/color).">?</span></label>
+          <div><div class="switch" id="faithmode"><button data-v="off" class="on">Off</button><button data-v="on">On</button></div></div>
+          <label>Faithfulness threshold <span class="help" data-tip="A variant scoring below this similarity to the source term is treated as mis-aligned and dropped.">?</span></label>
+          <div><input type="range" id="faiththr" min="30" max="90" value="60"><span class="val" id="faithlabel">60%</span></div>
+          <label>Check against term base <span class="help" data-tip="Also flag any phrase whose translation differs from a previously approved decision in your saved term base — even if this file is internally consistent.">?</span></label>
+          <div><div class="switch" id="tbmode"><button data-v="off" class="on">Off</button><button data-v="on">On</button></div></div>
         </div>
       </div>
 
-      <details class="llmcfg">
-        <summary>Optional: connect an LLM for semantic verdicts</summary>
-        <div class="body">
-          <div class="f"><label>Provider</label>
-            <select id="llm-provider">
-              <option value="auto">Auto-detect</option>
-              <option value="anthropic">Anthropic (/v1/messages)</option>
-              <option value="openai">OpenAI-compatible</option>
-            </select></div>
-          <div class="f"><label>Base URL</label><input id="llm-url" size="32" placeholder="https://api.anthropic.com"></div>
-          <div class="f"><label>API key</label><input id="llm-key" size="24" type="password" placeholder="sk-…"></div>
-          <div class="f"><label>Model</label><input id="llm-model" size="20" placeholder="claude-…"></div>
-          <button class="btn ghost" id="llm-test">Connect</button>
-          <span class="hint" id="llm-status"></span>
-        </div>
-      </details>
+      <!-- ===== RIGHT: models (+LLM), files, term base ===== -->
+      <div class="settings-side">
 
+        <div class="card">
+          <h3>Models</h3>
+          <div class="modelbar">
+            <span class="status-dot" id="mdot"></span>
+            <span id="mtext" style="flex:1">Alignment model not loaded.</span>
+            <button class="btn" id="loadmodel">Load model</button>
+          </div>
+          <div class="formgrid" style="margin-top:14px">
+            <label>Backend</label>
+            <div class="switch" id="backendpick">
+              <button data-v="simalign" class="on">SimAlign</button>
+              <button data-v="awesome">awesome-align</button>
+              <button data-v="ensemble">Ensemble</button>
+            </div>
+            <label>Base model</label>
+            <div class="switch" id="modelpick">
+              <button data-v="bert" class="on">mBERT (faster)</button>
+              <button data-v="xlmr">XLM-R (accuracy)</button>
+            </div>
+            <label>Ensemble mode</label>
+            <div class="switch" id="ensmode">
+              <button data-v="intersect" class="on">Intersect (precise)</button>
+              <button data-v="union">Union (recall)</button>
+            </div>
+          </div>
+          <div class="llmsub">
+            <h4>LLM — optional, for semantic verdicts</h4>
+            <div class="body">
+              <div class="f"><label>Provider</label>
+                <select id="llm-provider">
+                  <option value="auto">Auto-detect</option>
+                  <option value="anthropic">Anthropic (/v1/messages)</option>
+                  <option value="openai">OpenAI-compatible</option>
+                </select></div>
+              <div class="f"><label>Base URL</label><input id="llm-url" size="26" placeholder="https://api.anthropic.com"></div>
+              <div class="f"><label>API key</label><input id="llm-key" size="20" type="password" placeholder="sk-…"></div>
+              <div class="f"><label>Model</label><input id="llm-model" size="18" placeholder="claude-…"></div>
+              <button class="btn ghost" id="llm-test">Connect</button>
+              <span class="hint" id="llm-status"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Files</h3>
+          <div class="row">
+            <button class="btn" id="openfiles">Open XLIFF files…</button>
+            <span class="hint" id="filehint">Select one or more .xlf / .xliff files.</span>
+          </div>
+          <div id="filechips" class="files"></div>
+        </div>
+
+        <div class="card">
+          <h3>Approved term base</h3>
+          <div class="row">
+            <span class="hint" id="tbcount">0 approved terms</span>
+            <button class="btn ghost" id="tbview">View / manage</button>
+            <button class="btn ghost" id="tbclear">Clear all</button>
+          </div>
+          <div class="hint" style="margin-top:8px">saved to ~/.concord/termbase.json · persists across sessions · toggle the check under Metrics</div>
+          <div id="tblist"></div>
+        </div>
+
+      </div>
     </div>
     <div class="analyze-row">
       <button class="btn" id="run" disabled>Analyze →</button>
