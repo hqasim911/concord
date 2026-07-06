@@ -184,6 +184,10 @@
   .settings-side{display:flex;flex-direction:column;gap:18px}
   @media (max-width:920px){.settings-grid{grid-template-columns:1fr}}
   .fileshead{max-width:1120px;margin:0 auto 18px}
+  .batchrow{margin-top:12px;gap:10px}
+  .batchrow .bl{display:flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--mut);font-family:ui-monospace,monospace}
+  .batchrow input[type=number]{width:90px}
   input[type=number]{padding:7px 9px;border:1px solid var(--line);border-radius:6px;
     font-family:ui-monospace,monospace;font-size:13px;background:#fff;color:var(--ink);width:96px}
   .viewer{max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:8px;margin-top:14px;background:#fff}
@@ -269,6 +273,15 @@
         <button class="btn" id="openfiles">Open XLIFF files…</button>
         <span class="hint" id="filehint">Select one or more .xlf / .xliff files.</span>
       </div>
+      <div class="row batchrow">
+        <span class="picklabel">Batching:</span>
+        <label class="bl">Size <span class="help" data-tip="Analyze only this many segments per pass (0 = whole file). Approve terms from one batch, then check later batches against the saved term base.">?</span>
+          <input type="number" id="batchsize" min="0" step="1000" value="0"></label>
+        <span class="hint">segments · 0 = whole file</span>
+        <label class="bl">Batch # <span class="help" data-tip="Which chunk to analyze: batch 1 = first N segments, batch 2 = the next N, etc. Bump this to move through a large file one pass at a time.">?</span>
+          <input type="number" id="batchnum" min="1" step="1" value="1"></label>
+        <span class="hint" id="batchhint">whole file</span>
+      </div>
       <div id="filechips" class="files"></div>
       <div class="viewer" id="viewer"></div>
     </div>
@@ -336,13 +349,6 @@
           <div><div class="switch" id="tbmode"><button data-v="off" class="on">Off</button><button data-v="on">On</button></div></div>
         </div>
 
-        <h4 class="mgroup">Batching (large files)</h4>
-        <div class="formgrid">
-          <label>Batch size <span class="help" data-tip="Analyze only this many segments per run (0 = all). Approve terms from one batch, then check later batches against the saved term base.">?</span></label>
-          <div><input type="number" id="batchsize" min="0" step="1000" value="0"><span class="hint">segments per pass · 0 = whole file</span></div>
-          <label>Batch number <span class="help" data-tip="Which chunk to analyze: batch 1 = first N segments, batch 2 = the next N, etc. Bump this to move through a large file one pass at a time.">?</span></label>
-          <div><input type="number" id="batchnum" min="1" step="1" value="1"><span class="hint" id="batchhint">whole file</span></div>
-        </div>
       </div>
 
       <!-- ===== RIGHT: models (+LLM), files, term base ===== -->
