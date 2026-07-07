@@ -502,7 +502,7 @@ function paintVault(){
     <input type="checkbox" class="vsel" ${vaultSel.has(e.key)?'checked':''}>
     <input class="vsrc-i" value="${esc(e.source)}">
     <input class="vtgt-i" value="${esc(e.target)}" dir="rtl">
-    <span class="vlen">${wc(e.source)}w</span>
+    <span class="vlen">${wc(e.source)}-word</span>
     <span class="vmeta">${esc((e.updated||'').slice(0,10))}</span>
     <button class="va del">✕</button>
   </div>`).join("");
