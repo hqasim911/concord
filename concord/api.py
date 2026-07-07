@@ -460,6 +460,7 @@ class ConcordAPI:
     # ---- approved term base (persistent) ----
     def termbase_info(self) -> dict:
         return {"count": len(self._termbase),
+                "trash_count": len(self._termbase.trash),
                 "path": self._termbase.path,
                 "entries": self._termbase.as_list()}
 
@@ -480,6 +481,23 @@ class ConcordAPI:
 
     def remove_term(self, key: str) -> dict:
         return {"ok": True, "count": self._termbase.remove(key)}
+
+    def remove_terms(self, keys: List[str]) -> dict:
+        return {"ok": True, "count": self._termbase.remove_many(keys)}
+
+    def restore_term(self, key: str) -> dict:
+        return {"ok": True, "count": self._termbase.restore(key)}
+
+    def restore_all_terms(self) -> dict:
+        return {"ok": True, "count": self._termbase.restore_all()}
+
+    def empty_trash(self) -> dict:
+        self._termbase.empty_trash()
+        return {"ok": True}
+
+    def trash_info(self) -> dict:
+        return {"count": len(self._termbase.trash),
+                "entries": self._termbase.trash_list()}
 
     def update_term(self, old_key: str, source: str, target: str) -> dict:
         """Edit an entry: rename the key if the source changed, set target."""

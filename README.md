@@ -144,22 +144,27 @@ python run.py
   downgraded to consistent in all-n-grams mode); survivors show a `distinct`
   badge with the similarity score.
 
-## Term base — consistency across files & over time
+## N-gram Vault — consistency across files & over time
 
 Concord catches inconsistencies *within* a batch, but terminology also has to
-stay consistent **across files processed at different times**. The approved
-**term base** makes that durable:
+stay consistent **across files processed at different times**. The **N-gram
+Vault** (a persistent store of approved decisions) makes that durable:
 
-- **Capture** — when you resolve a flag, click **Approve ✓** on the correct
-  variant to record `source n-gram → approved translation`. **Approve all →
-  term base** bulk-approves the dominant translation of every flag.
-- **Persist** — decisions are saved to `~/.concord/termbase.json` and reloaded
-  every session (View / manage or Clear from Settings).
-- **Check** — turn on **Check against term base** (Settings). Any n-gram whose
+- **Capture** — resolve a flag and click **Approve ✓** on the correct variant
+  to record `source n-gram → approved translation`; **Approve all** bulk-
+  approves the dominant translation of every flag.
+- **Persist** — saved to `~/.concord/termbase.json`, reloaded every session.
+- **Check** — turn on **Check against vault** (Metrics). Any n-gram whose
   translation in a new file deviates from its approved entry is flagged as a
-  **term-base violation** — *even if that file is internally consistent*. So a
-  term standardized once stays standardized, no matter when the next file
-  arrives.
+  **vault violation** — *even if that file is internally consistent*.
+- **Manage** — a dedicated **N-gram Vault** page: regex/scoped search, filter
+  by n-gram length, sort (source/target/date/length), inline-edit entries
+  (save on blur), multi-select + bulk delete, CSV/JSON import + CSV export, and
+  a **recycle bin** (deletes are soft; restore individually or all).
+
+Combined with **Batching**, this lets you process a huge file in passes:
+analyze batch 1 → approve terms → analyze batch 2 with the vault check on, so
+consistency holds across the whole file even in separate runs.
 
 ## Headless test (no GUI)
 

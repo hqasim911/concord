@@ -240,19 +240,28 @@
   .vault-search{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:6px;
     font-family:inherit;font-size:14px;background:#fff;color:var(--ink);margin-bottom:12px}
   .vrowe{display:flex;gap:12px;align-items:center;padding:9px 12px;border:1px solid var(--line);
-    border-radius:7px;background:var(--paper-2);margin-bottom:7px}
-  .vrowe .vsrc{flex:1;font-weight:600}
-  .vrowe .vtgt{flex:1;direction:rtl;text-align:right}
-  .vrowe input{flex:1;padding:6px 9px;border:1px solid var(--line);border-radius:5px;
-    font-family:inherit;font-size:14px;background:#fff}
-  .vrowe .vtgt input{direction:rtl;text-align:right}
+    border-radius:7px;background:#e7efe9;margin-bottom:7px;transition:background .25s,border-color .25s}
+  .vrowe:focus-within{background:#fff3dc;border-color:var(--amber)}   /* editing */
+  .vrowe.saved{border-color:var(--jade);background:#cfe9d8}           /* just saved */
+  .vrowe.sel{border-color:var(--jade-deep);box-shadow:inset 3px 0 0 var(--jade-deep)}
+  .vrowe .vsel{flex:none;width:16px;height:16px;accent-color:var(--jade);cursor:pointer}
+  .vrowe input.vsrc-i,.vrowe input.vtgt-i{flex:1;padding:6px 9px;border:1px solid var(--line);
+    border-radius:5px;font-family:inherit;font-size:14px;background:#fff}
+  .vrowe input.vtgt-i{direction:rtl;text-align:right}
   .vrowe .va{border:0;background:transparent;color:var(--mut);cursor:pointer;
     font-family:ui-monospace,monospace;font-size:11px;padding:3px 6px}
   .vrowe .va:hover{color:var(--jade)}
   .vrowe .va.del:hover{color:var(--rust)}
-  .vmeta{font-family:ui-monospace,monospace;font-size:10px;color:var(--mut);width:96px;flex:none;text-align:right}
-  .vrowe.saved{border-color:var(--jade);background:#e9f3ec;transition:background .3s,border-color .3s}
+  .vlen{font-family:ui-monospace,monospace;font-size:10px;color:var(--jade-deep);width:38px;flex:none;text-align:right}
+  .vmeta{font-family:ui-monospace,monospace;font-size:10px;color:var(--mut);width:78px;flex:none;text-align:right}
   .vault-search.rxbad{outline:2px solid var(--rust)}
+  .vault-tools select{padding:7px 9px;border:1px solid var(--line);border-radius:6px;
+    font-family:ui-monospace,monospace;font-size:12px;background:#fff;color:var(--ink)}
+  .vault-selrow{margin:0 0 12px}
+  .binrow{display:flex;gap:12px;align-items:center;padding:8px 12px;border:1px dashed var(--line);
+    border-radius:7px;background:var(--paper);margin-bottom:6px;opacity:.85}
+  .binrow .bsrc{flex:1;font-weight:600}
+  .binrow .btgt{flex:1;direction:rtl;text-align:right}
 
   /* run page console */
   .runhead{margin-bottom:12px}
@@ -449,7 +458,7 @@
         <div class="row" style="margin-left:auto">
           <button class="btn ghost" id="vault-import">Import…</button>
           <button class="btn ghost" id="vault-export">Export CSV</button>
-          <button class="btn ghost" id="vault-clear">Clear all</button>
+          <button class="btn ghost" id="vault-binbtn">Recycle bin (0)</button>
         </div>
       </div>
 
@@ -459,12 +468,42 @@
         <button class="btn" id="vault-addbtn">Add / update</button>
       </div>
 
-      <div class="row" style="gap:10px;margin-bottom:12px">
-        <input type="text" id="vault-search" class="vault-search" style="margin:0;flex:1" placeholder="Search source or translation…">
+      <div class="row vault-tools" style="gap:10px;margin-bottom:10px">
+        <input type="text" id="vault-search" class="vault-search" style="margin:0;flex:1;min-width:170px" placeholder="Search…">
         <label class="hint" style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="vault-rx"> regex</label>
+        <select id="vault-scope" title="search in"><option value="both">both</option><option value="source">source</option><option value="target">target</option></select>
+        <select id="vault-len" title="filter by n-gram length">
+          <option value="any">any length</option>
+          <option value="1">1 word</option><option value="2">2 words</option>
+          <option value="3">3 words</option><option value="4">4 words</option>
+          <option value="5">5 words</option><option value="6">6+ words</option>
+        </select>
+        <select id="vault-sort" title="sort">
+          <option value="src">Source A–Z</option><option value="src-desc">Source Z–A</option>
+          <option value="tgt">Target A–Z</option>
+          <option value="date-new">Newest</option><option value="date-old">Oldest</option>
+          <option value="len-asc">Shortest</option><option value="len-desc">Longest</option>
+        </select>
         <span class="hint" id="vault-shown"></span>
       </div>
+
+      <div class="row vault-selrow" style="gap:12px">
+        <label class="hint" style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="vault-selall"> select all shown</label>
+        <button class="btn ghost" id="vault-delsel">Delete selected</button>
+        <button class="btn ghost" id="vault-clear">Clear all</button>
+        <span class="hint" id="vault-selcount"></span>
+      </div>
+
       <div id="vault-list"></div>
+
+      <div class="card hidden" id="vault-bin" style="margin-top:18px">
+        <div class="row">
+          <h3 style="margin:0">Recycle bin <span class="hint" id="bin-count"></span></h3>
+          <button class="btn ghost" id="bin-restoreall" style="margin-left:auto">Restore all</button>
+          <button class="btn ghost" id="bin-empty">Empty bin</button>
+        </div>
+        <div id="bin-list" style="margin-top:12px"></div>
+      </div>
     </div>
   </section>
 

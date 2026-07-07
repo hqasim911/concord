@@ -455,12 +455,15 @@ $("#approveall").addEventListener("click", async ()=>{
 $("#tbview").addEventListener("click", ()=>{ showPage("vault"); renderVault(); });
 
 // ---------- N-gram Vault page ----------
-let vaultEntries=[];
+let vaultEntries=[], vaultTrash=[], vaultSel=new Set();
+function jsKey(s){ return s.toLowerCase().replace(/\s+/g," ").trim(); }
+function wc(s){ return s.trim().split(/\s+/).filter(Boolean).length; }
 async function renderVault(){
-  const r=await api().termbase_info();
-  vaultEntries=r.entries||[];
-  refreshTB();
-  paintVault();
+  const r=await api().termbase_info(); vaultEntries=r.entries||[];
+  const tb=await api().trash_info(); vaultTrash=tb.entries||[];
+  vaultSel=new Set([...vaultSel].filter(k=>vaultEntries.some(e=>e.key===k)));
+  refreshTB(); updateBinBtn(); paintVault();
+  if(!$("#vault-bin").classList.contains("hidden")) paintBin();
 }
 function vaultMatcher(){
   const raw=$("#vault-search").value.trim(), el=$("#vault-search");
@@ -472,30 +475,47 @@ function vaultMatcher(){
   el.classList.remove("rxbad");
   const low=raw.toLowerCase(); return s=>String(s).toLowerCase().includes(low);
 }
-function jsKey(s){ return s.toLowerCase().replace(/\s+/g," ").trim(); }
+function sortEntries(arr){
+  const by=$("#vault-sort").value, a=[...arr];
+  const cmp={
+    "src":(x,y)=>x.source.localeCompare(y.source),
+    "src-desc":(x,y)=>y.source.localeCompare(x.source),
+    "tgt":(x,y)=>x.target.localeCompare(y.target),
+    "date-new":(x,y)=>(y.updated||"").localeCompare(x.updated||""),
+    "date-old":(x,y)=>(x.updated||"").localeCompare(y.updated||""),
+    "len-asc":(x,y)=>wc(x.source)-wc(y.source)||x.source.localeCompare(y.source),
+    "len-desc":(x,y)=>wc(y.source)-wc(x.source)||x.source.localeCompare(y.source),
+  }[by]||((x,y)=>x.source.localeCompare(y.source));
+  return a.sort(cmp);
+}
+function updateSelCount(){ $("#vault-selcount").textContent=vaultSel.size?`${vaultSel.size} selected`:""; }
 function paintVault(){
-  const box=$("#vault-list"), m=vaultMatcher();
-  if(!vaultEntries.length){ $("#vault-shown").textContent=""; box.innerHTML=`<div class="empty"><div class="big">🗄</div><strong>Vault is empty</strong><div style="margin-top:6px">Approve terms from the results page, or add them above.</div></div>`; return; }
+  const box=$("#vault-list"), m=vaultMatcher(), scope=$("#vault-scope").value, lenf=$("#vault-len").value;
+  if(!vaultEntries.length){ $("#vault-shown").textContent=""; updateSelCount(); box.innerHTML=`<div class="empty"><div class="big">🗄</div><strong>Vault is empty</strong><div style="margin-top:6px">Approve terms from the results page, or add them above.</div></div>`; return; }
   let data=vaultEntries;
-  if(m) data=data.filter(e=>m(e.source)||m(e.target));
+  if(lenf!=="any"){ const n=+lenf; data=data.filter(e=> lenf==="6" ? wc(e.source)>=6 : wc(e.source)===n); }
+  if(m){ data=data.filter(e=>(scope!=="target"&&m(e.source))||(scope!=="source"&&m(e.target))); }
+  data=sortEntries(data);
   $("#vault-shown").textContent=`${data.length} of ${vaultEntries.length}`;
-  if(!data.length){ box.innerHTML=`<div class="empty">No matches.</div>`; return; }
-  box.innerHTML=data.map(e=>`<div class="vrowe" data-k="${esc(e.key)}">
+  if(!data.length){ box.innerHTML=`<div class="empty">No matches.</div>`; updateSelCount(); return; }
+  box.innerHTML=data.map(e=>`<div class="vrowe ${vaultSel.has(e.key)?'sel':''}" data-k="${esc(e.key)}">
+    <input type="checkbox" class="vsel" ${vaultSel.has(e.key)?'checked':''}>
     <input class="vsrc-i" value="${esc(e.source)}">
     <input class="vtgt-i" value="${esc(e.target)}" dir="rtl">
+    <span class="vlen">${wc(e.source)}w</span>
     <span class="vmeta">${esc((e.updated||'').slice(0,10))}</span>
     <button class="va del">✕</button>
   </div>`).join("");
   box.querySelectorAll(".vrowe").forEach(row=>{
     let key=row.dataset.k;
     const e=vaultEntries.find(x=>x.key===key);
-    const si=row.querySelector(".vsrc-i"), ti=row.querySelector(".vtgt-i");
+    const si=row.querySelector(".vsrc-i"), ti=row.querySelector(".vtgt-i"), cb=row.querySelector(".vsel");
     async function save(){
       const s=si.value.trim(), t=ti.value.trim();
       if(!s||!t) return;
-      if(e && s===e.source && t===e.target) return;    // unchanged
+      if(e && s===e.source && t===e.target) return;
       await api().update_term(key, s, t);
-      if(e){ e.source=s; e.target=t; e.key=jsKey(s); }
+      if(e){ const nk=jsKey(s); if(vaultSel.has(e.key)){ vaultSel.delete(e.key); vaultSel.add(nk); } e.source=s; e.target=t; e.key=nk; }
       key=jsKey(s); row.dataset.k=key;
       row.classList.add("saved"); setTimeout(()=>row.classList.remove("saved"),700);
       refreshTB();
@@ -503,17 +523,32 @@ function paintVault(){
     si.addEventListener("blur",save); ti.addEventListener("blur",save);
     si.addEventListener("keydown",ev=>{ if(ev.key==="Enter") si.blur(); });
     ti.addEventListener("keydown",ev=>{ if(ev.key==="Enter") ti.blur(); });
+    cb.addEventListener("change",()=>{ cb.checked?vaultSel.add(key):vaultSel.delete(key); row.classList.toggle("sel",cb.checked); updateSelCount(); });
     row.querySelector(".del").addEventListener("click",async()=>{
-      if(!confirm("Remove this entry?")) return;
-      await api().remove_term(key); await renderVault();
+      if(!confirm("Move this entry to the recycle bin?")) return;
+      vaultSel.delete(key); await api().remove_term(key); await renderVault();
     });
   });
+  updateSelCount();
 }
-$("#vault-search").addEventListener("input",paintVault);
-$("#vault-rx").addEventListener("change",paintVault);
+["vault-search","vault-rx","vault-scope","vault-len","vault-sort"].forEach(id=>{
+  const el=$("#"+id); el.addEventListener(id==="vault-search"?"input":"change",paintVault);
+});
+$("#vault-selall").addEventListener("change",e=>{
+  $("#vault-list").querySelectorAll(".vrowe").forEach(row=>{
+    const k=row.dataset.k, cb=row.querySelector(".vsel");
+    cb.checked=e.target.checked; e.target.checked?vaultSel.add(k):vaultSel.delete(k); row.classList.toggle("sel",e.target.checked);
+  });
+  updateSelCount();
+});
+$("#vault-delsel").addEventListener("click",async()=>{
+  if(!vaultSel.size) return;
+  if(!confirm(`Move ${vaultSel.size} selected entr${vaultSel.size>1?'ies':'y'} to the recycle bin?`)) return;
+  await api().remove_terms([...vaultSel]); vaultSel.clear(); $("#vault-selall").checked=false; await renderVault();
+});
 $("#vault-addbtn").addEventListener("click",async()=>{
   const s=$("#vault-add-src").value.trim(), t=$("#vault-add-tgt").value.trim();
-  if(!s||!t){ return; }
+  if(!s||!t) return;
   await api().approve_term(s,t); $("#vault-add-src").value=""; $("#vault-add-tgt").value="";
   await renderVault();
 });
@@ -528,8 +563,26 @@ $("#vault-import").addEventListener("click",async()=>{
 });
 $("#vault-clear").addEventListener("click",async()=>{
   const r0=await api().termbase_info(); if(!r0.count) return;
-  if(!confirm(`Clear all ${r0.count} approved term(s)? This cannot be undone.`)) return;
-  await api().clear_termbase(); await renderVault();
+  if(!confirm(`Move all ${r0.count} approved term(s) to the recycle bin?`)) return;
+  await api().clear_termbase(); vaultSel.clear(); await renderVault();
+});
+
+// ---- recycle bin ----
+function updateBinBtn(){ $("#vault-binbtn").textContent=`Recycle bin (${vaultTrash.length})`; $("#bin-count").textContent=`· ${vaultTrash.length} item(s)`; }
+$("#vault-binbtn").addEventListener("click",()=>{ const open=!$("#vault-bin").classList.toggle("hidden"); if(open) paintBin(); });
+function paintBin(){
+  const box=$("#bin-list");
+  if(!vaultTrash.length){ box.innerHTML=`<div class="hint">Recycle bin is empty.</div>`; return; }
+  box.innerHTML=vaultTrash.map(e=>`<div class="binrow" data-k="${esc(e.key)}"><span class="bsrc">${esc(e.source)}</span><span class="btgt">${esc(e.target)}</span><span class="vmeta">${esc((e.updated||'').slice(0,10))}</span><button class="va restore">restore</button></div>`).join("");
+  box.querySelectorAll(".binrow").forEach(row=>row.querySelector(".restore").addEventListener("click",async()=>{
+    await api().restore_term(row.dataset.k); await renderVault();
+  }));
+}
+$("#bin-restoreall").addEventListener("click",async()=>{ if(!vaultTrash.length) return; await api().restore_all_terms(); await renderVault(); });
+$("#bin-empty").addEventListener("click",async()=>{
+  if(!vaultTrash.length) return;
+  if(!confirm(`Permanently delete ${vaultTrash.length} item(s) in the recycle bin? This cannot be undone.`)) return;
+  await api().empty_trash(); await renderVault();
 });
 
 // ---------- local verifier: back-translation | LaBSE ----------
