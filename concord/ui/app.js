@@ -462,40 +462,55 @@ async function renderVault(){
   refreshTB();
   paintVault();
 }
+function vaultMatcher(){
+  const raw=$("#vault-search").value.trim(), el=$("#vault-search");
+  if(!raw){ el.classList.remove("rxbad"); return null; }
+  if($("#vault-rx").checked){
+    try{ const re=new RegExp(raw,"i"); el.classList.remove("rxbad"); return s=>re.test(String(s)); }
+    catch(e){ el.classList.add("rxbad"); return null; }
+  }
+  el.classList.remove("rxbad");
+  const low=raw.toLowerCase(); return s=>String(s).toLowerCase().includes(low);
+}
+function jsKey(s){ return s.toLowerCase().replace(/\s+/g," ").trim(); }
 function paintVault(){
-  const q=$("#vault-search").value.trim().toLowerCase();
-  const box=$("#vault-list");
+  const box=$("#vault-list"), m=vaultMatcher();
+  if(!vaultEntries.length){ $("#vault-shown").textContent=""; box.innerHTML=`<div class="empty"><div class="big">🗄</div><strong>Vault is empty</strong><div style="margin-top:6px">Approve terms from the results page, or add them above.</div></div>`; return; }
   let data=vaultEntries;
-  if(q) data=data.filter(e=>e.source.toLowerCase().includes(q)||e.target.toLowerCase().includes(q));
-  if(!vaultEntries.length){ box.innerHTML=`<div class="empty"><div class="big">🗄</div><strong>Vault is empty</strong><div style="margin-top:6px">Approve terms from the results page, or add them above.</div></div>`; return; }
+  if(m) data=data.filter(e=>m(e.source)||m(e.target));
+  $("#vault-shown").textContent=`${data.length} of ${vaultEntries.length}`;
   if(!data.length){ box.innerHTML=`<div class="empty">No matches.</div>`; return; }
   box.innerHTML=data.map(e=>`<div class="vrowe" data-k="${esc(e.key)}">
-    <span class="vsrc">${esc(e.source)}</span>
-    <span class="vtgt">${esc(e.target)}</span>
+    <input class="vsrc-i" value="${esc(e.source)}">
+    <input class="vtgt-i" value="${esc(e.target)}" dir="rtl">
     <span class="vmeta">${esc((e.updated||'').slice(0,10))}</span>
-    <button class="va edit">edit</button><button class="va del">✕</button>
+    <button class="va del">✕</button>
   </div>`).join("");
   box.querySelectorAll(".vrowe").forEach(row=>{
-    const key=row.dataset.k;
+    let key=row.dataset.k;
+    const e=vaultEntries.find(x=>x.key===key);
+    const si=row.querySelector(".vsrc-i"), ti=row.querySelector(".vtgt-i");
+    async function save(){
+      const s=si.value.trim(), t=ti.value.trim();
+      if(!s||!t) return;
+      if(e && s===e.source && t===e.target) return;    // unchanged
+      await api().update_term(key, s, t);
+      if(e){ e.source=s; e.target=t; e.key=jsKey(s); }
+      key=jsKey(s); row.dataset.k=key;
+      row.classList.add("saved"); setTimeout(()=>row.classList.remove("saved"),700);
+      refreshTB();
+    }
+    si.addEventListener("blur",save); ti.addEventListener("blur",save);
+    si.addEventListener("keydown",ev=>{ if(ev.key==="Enter") si.blur(); });
+    ti.addEventListener("keydown",ev=>{ if(ev.key==="Enter") ti.blur(); });
     row.querySelector(".del").addEventListener("click",async()=>{
       if(!confirm("Remove this entry?")) return;
       await api().remove_term(key); await renderVault();
     });
-    row.querySelector(".edit").addEventListener("click",()=>{
-      const e=vaultEntries.find(x=>x.key===key); if(!e) return;
-      row.innerHTML=`<span class="vsrc"><input value="${esc(e.source)}"></span>
-        <span class="vtgt"><input value="${esc(e.target)}" dir="rtl"></span>
-        <button class="va save">save</button><button class="va del cancel">cancel</button>`;
-      const [si,ti]=row.querySelectorAll("input");
-      row.querySelector(".save").addEventListener("click",async()=>{
-        await api().update_term(key, si.value, ti.value); await renderVault();
-      });
-      row.querySelector(".cancel").addEventListener("click",()=>paintVault());
-      si.focus();
-    });
   });
 }
 $("#vault-search").addEventListener("input",paintVault);
+$("#vault-rx").addEventListener("change",paintVault);
 $("#vault-addbtn").addEventListener("click",async()=>{
   const s=$("#vault-add-src").value.trim(), t=$("#vault-add-tgt").value.trim();
   if(!s||!t){ return; }

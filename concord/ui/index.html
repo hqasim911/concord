@@ -251,6 +251,8 @@
   .vrowe .va:hover{color:var(--jade)}
   .vrowe .va.del:hover{color:var(--rust)}
   .vmeta{font-family:ui-monospace,monospace;font-size:10px;color:var(--mut);width:96px;flex:none;text-align:right}
+  .vrowe.saved{border-color:var(--jade);background:#e9f3ec;transition:background .3s,border-color .3s}
+  .vault-search.rxbad{outline:2px solid var(--rust)}
 
   /* run page console */
   .runhead{margin-bottom:12px}
@@ -457,7 +459,11 @@
         <button class="btn" id="vault-addbtn">Add / update</button>
       </div>
 
-      <input type="text" id="vault-search" class="vault-search" placeholder="Search source or translation…">
+      <div class="row" style="gap:10px;margin-bottom:12px">
+        <input type="text" id="vault-search" class="vault-search" style="margin:0;flex:1" placeholder="Search source or translation…">
+        <label class="hint" style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="vault-rx"> regex</label>
+        <span class="hint" id="vault-shown"></span>
+      </div>
       <div id="vault-list"></div>
     </div>
   </section>
