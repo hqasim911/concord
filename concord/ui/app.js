@@ -164,8 +164,7 @@ $("#tbmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()
   $("#tbmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); checkTB=b.dataset.v==="on";
 }));
 function refreshTB(){ if(!window.pywebview) return; api().termbase_info().then(r=>{
-  $("#tbcount").textContent=`${r.count} approved term(s)`;
-  $("#vault-count").textContent=`${r.count} approved term(s) · ~/.concord/termbase.json`;
+  const v=$("#vault-count"); if(v) v.textContent=`${r.count} approved term(s) · ~/.concord/termbase.json`;
 }); }
 window.addEventListener("pywebviewready", refreshTB);
 $("#minvar").addEventListener("input",e=>$("#minvarlabel").textContent=e.target.value+"×");
@@ -451,9 +450,6 @@ $("#approveall").addEventListener("click", async ()=>{
   render();
   $("#toolshint").textContent=`Approved ${r.approved} term(s) · ${r.count} in term base.`;
 });
-// Settings "Open vault →" button jumps to the vault page
-$("#tbview").addEventListener("click", ()=>{ showPage("vault"); renderVault(); });
-
 // ---------- N-gram Vault page ----------
 let vaultEntries=[], vaultTrash=[], vaultSel=new Set();
 function jsKey(s){ return s.toLowerCase().replace(/\s+/g," ").trim(); }
