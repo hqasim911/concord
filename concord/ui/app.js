@@ -307,7 +307,7 @@ function bind(host,data){
   }));
   host.querySelectorAll(".group-head").forEach(h=>h.addEventListener("click",ev=>{
     if(["llmbtn","whybtn","decbtn","accept","dismiss","undobtn"].some(c=>ev.target.classList.contains(c))) return;
-    const panel=h.nextElementSibling, open=panel.classList.toggle("hidden");
+    const panel=h.closest(".group").querySelector(".variants"), open=panel.classList.toggle("hidden");
     h.querySelector(".chev").textContent=open?"▸":"▾";
     if(!open) panel.querySelectorAll("textarea.seg-tgt").forEach(grow);
   }));
