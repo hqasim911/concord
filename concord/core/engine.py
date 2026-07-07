@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Callable, Optional
 
 from .textutil import (
-    tokenize, ngrams_with_positions, target_span, norm_edit_distance,
+    tokenize, ngrams_with_positions, aligned_span, norm_edit_distance,
     DEFAULT_STOPWORDS,
 )
 from .aligner import Aligner
@@ -32,6 +32,9 @@ class SpanOccurrence:
     source: str
     target: str          # full original target (for the editor)
     span: str            # normalized aligned span translating the n-gram
+    tgt_lo: Optional[int] = None   # target token range of the span (for splice)
+    tgt_hi: Optional[int] = None
+    raw: str = ""                  # un-normalized visible span text
 
 
 @dataclass
@@ -215,17 +218,19 @@ class ConsistencyEngine:
                 seen_in_seg.add(key)
                 display.setdefault(key, disp)
 
-                span = target_span(
+                info = aligned_span(
                     tgt_tokens, alignment, start, length,
                     normalize=True, fold_taa=cfg.fold_taa,
                     strip_clitics=cfg.strip_clitics,
                 )
+                span = info["span"]
                 if not span:
                     continue
 
                 occ = SpanOccurrence(
                     sid=seg.sid, file=seg.file, unit=seg.unit,
                     source=seg.source, target=seg.target, span=span,
+                    tgt_lo=info["lo"], tgt_hi=info["hi"], raw=info["raw"],
                 )
                 gv = groups.setdefault(key, {})
                 gv.setdefault(span, Variant(span=span)).occurrences.append(occ)

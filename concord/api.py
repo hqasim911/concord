@@ -362,6 +362,7 @@ class ConcordAPI:
                 "decided": f.decided,
                 "variants": [{
                     "span": v.span, "count": v.count,
+                    "raw": (v.occurrences[0].raw if v.occurrences else v.span),
                     "occurrences": [{
                         "sid": o.sid, "file": o.file, "unit": o.unit,
                         "source": o.source,
@@ -392,6 +393,37 @@ class ConcordAPI:
     def _placeholder_count(self) -> int:
         from .core.xliff import placeholder_issues
         return len(placeholder_issues(self._segments))
+
+    @staticmethod
+    def _splice(target: str, lo, hi, corrected: str) -> str:
+        """Replace only the aligned token range [lo, hi] in the target with the
+        corrected term, keeping the rest of the segment intact."""
+        toks = target.split()
+        if lo is None or hi is None or lo < 0 or hi >= len(toks) or lo > hi:
+            return corrected                       # can't locate → old behavior
+        return " ".join(toks[:lo] + [corrected] + toks[hi + 1:])
+
+    def apply_correction(self, ngram: str, corrected: str) -> dict:
+        """Standardize a flagged term: splice `corrected` into every occurrence
+        at its aligned span (not replace the whole segment). Returns the new
+        target text per segment so the UI can update."""
+        corrected = (corrected or "").strip()
+        if not corrected:
+            return {"ok": False}
+        out = {}
+        for f in self._flags:
+            if f.ngram != ngram:
+                continue
+            for v in f.variants:
+                for o in v.occurrences:
+                    new_t = self._splice(o.target, o.tgt_lo, o.tgt_hi, corrected)
+                    if new_t == o.target:
+                        self._edits.pop(o.sid, None)
+                    else:
+                        self._edits[o.sid] = new_t
+                    out[o.sid] = new_t
+            break
+        return {"ok": True, "targets": out, "edits": len(self._edits)}
 
     # ---- editing ----
     def set_edit(self, sid: str, text: str) -> dict:

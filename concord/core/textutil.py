@@ -198,19 +198,33 @@ def target_span(
     off each word so morphological variants of the same term are compared
     as equal (see light_stem_ar).
     """
+    return aligned_span(tgt_tokens, alignments, ng_start, ng_len,
+                        normalize, fold_taa, strip_clitics)["span"]
+
+
+def aligned_span(
+    tgt_tokens: List[str], alignments, ng_start: int, ng_len: int,
+    normalize: bool = True, fold_taa: bool = True, strip_clitics: bool = True,
+) -> dict:
+    """
+    Like target_span, but returns {span, lo, hi, raw}:
+      span — the normalized comparison span (what flags are grouped by)
+      lo/hi — the target token range, so a correction can be spliced back
+              into the exact place in the segment (not replace the whole target)
+      raw — the un-normalized visible span text (readable term to insert)
+    """
     ng_src = set(range(ng_start, ng_start + ng_len))
     tgt_idx = sorted({ti for (si, ti) in alignments if si in ng_src})
     if not tgt_idx:
-        return ""
+        return {"span": "", "lo": None, "hi": None, "raw": ""}
     lo, hi = trim_span_outliers(tgt_idx)
-    span = " ".join(tgt_tokens[lo:hi + 1])
-    span = strip_edge_punct_span(span)
-    if not normalize:
-        return span
-    span = normalize_ar(span, fold_taa)
-    if strip_clitics:
-        span = " ".join(light_stem_ar(w) for w in span.split())
-    return span
+    raw = strip_edge_punct_span(" ".join(tgt_tokens[lo:hi + 1]))
+    span = raw
+    if normalize:
+        span = normalize_ar(span, fold_taa)
+        if strip_clitics:
+            span = " ".join(light_stem_ar(w) for w in span.split())
+    return {"span": span, "lo": lo, "hi": hi, "raw": raw}
 
 
 def strip_edge_punct_span(span: str) -> str:

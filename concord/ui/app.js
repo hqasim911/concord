@@ -355,16 +355,9 @@ function bind(host,data){
     const ta=b.closest(".seg").querySelector("textarea"); ta.value=orig;
     b.closest(".seg").classList.remove("changed"); grow(ta); refreshDirty();
   }));
-  host.querySelectorAll(".usebtn").forEach(btn=>btn.addEventListener("click",e=>{
-    e.stopPropagation(); const f=data[+btn.dataset.g], v=f.variants[+btn.dataset.v], text=v.span;
-    const group=btn.closest(".group");
-    f.variants.forEach(vv=>vv.occurrences.forEach(o=>{
-      if(text===segOriginal.get(o.sid)) edits.delete(o.sid); else edits.set(o.sid,text);
-      api().set_edit(o.sid,text);
-      const ta=group.querySelector(`textarea.seg-tgt[data-sid="${cssEsc(o.sid)}"]`);
-      if(ta){ta.value=text; ta.closest(".seg").classList.toggle("changed",edits.has(o.sid)); grow(ta);}
-    }));
-    refreshDirty();
+  host.querySelectorAll(".usebtn").forEach(btn=>btn.addEventListener("click",async e=>{
+    e.stopPropagation(); const f=data[+btn.dataset.g], v=f.variants[+btn.dataset.v];
+    await applyCorrection(f, btn.closest(".group"), v.raw||v.span);
   }));
   host.querySelectorAll(".approvebtn").forEach(btn=>btn.addEventListener("click",e=>{
     e.stopPropagation();
@@ -382,19 +375,12 @@ function bind(host,data){
     api().approve_term(f.ngram, val).then(()=>refreshTB());
     f.approved=val; btn.classList.add("done"); btn.textContent="Approved ✓";
   }));
-  host.querySelectorAll(".usecustom").forEach(btn=>btn.addEventListener("click",e=>{
+  host.querySelectorAll(".usecustom").forEach(btn=>btn.addEventListener("click",async e=>{
     e.stopPropagation();
     const f=data[+btn.dataset.g];
     const inp=btn.closest(".varhead").querySelector(".customspan");
     const text=inp.value.trim(); if(!text){ inp.focus(); return; }
-    const group=btn.closest(".group");
-    f.variants.forEach(vv=>vv.occurrences.forEach(o=>{
-      if(text===segOriginal.get(o.sid)) edits.delete(o.sid); else edits.set(o.sid,text);
-      api().set_edit(o.sid,text);
-      const ta=group.querySelector(`textarea.seg-tgt[data-sid="${cssEsc(o.sid)}"]`);
-      if(ta){ta.value=text; ta.closest(".seg").classList.toggle("changed",edits.has(o.sid)); grow(ta);}
-    }));
-    refreshDirty();
+    await applyCorrection(f, btn.closest(".group"), text);
   }));
   host.querySelectorAll(".customspan").forEach(inp=>inp.addEventListener("keydown",e=>{
     if(e.key==="Enter"){ e.preventDefault(); inp.closest(".varhead").querySelector(".approvecustom").click(); }
@@ -410,6 +396,17 @@ function bind(host,data){
   }));
 }
 function grow(ta){ta.style.height="auto";ta.style.height=ta.scrollHeight+"px";}
+async function applyCorrection(f, group, corrected){
+  const r=await api().apply_correction(f.ngram, corrected);
+  const t=(r&&r.targets)||{};
+  Object.keys(t).forEach(sid=>{
+    const val=t[sid];
+    if(val===segOriginal.get(sid)) edits.delete(sid); else edits.set(sid,val);
+    const ta=group.querySelector(`textarea.seg-tgt[data-sid="${cssEsc(sid)}"]`);
+    if(ta){ ta.value=val; ta.closest(".seg").classList.toggle("changed",edits.has(sid)); grow(ta); }
+  });
+  refreshDirty();
+}
 
 // ---------- expand/collapse all ----------
 const toggleAll=$("#toggleall");
