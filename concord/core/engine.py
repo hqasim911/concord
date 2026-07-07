@@ -53,6 +53,7 @@ class Flag:
     dropped: Optional[list] = None    # variants removed as mis-aligned
     termbase_approved: Optional[str] = None   # approved translation, if any
     termbase_violation: bool = False          # deviates from the approved term
+    decided: Optional[str] = None             # reviewer verdict: accepted|dismissed
 
     @property
     def distinct(self):

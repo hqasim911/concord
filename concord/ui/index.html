@@ -123,6 +123,18 @@
 
   .llmout{padding:8px 18px 12px 26px;font-size:13px;color:var(--jade-deep);background:#fbfaf5}
   .llmout.bad{color:var(--rust)}
+
+  /* per-flag decisions */
+  .decbtn{border:1px solid var(--line);background:transparent;color:var(--mut);font-family:inherit;
+    font-size:12px;padding:5px 11px;border-radius:5px;cursor:pointer;margin-left:6px}
+  .decbtn.accept:hover{background:var(--jade);color:#fff;border-color:var(--jade)}
+  .decbtn.dismiss:hover{background:var(--rust);color:#fff;border-color:var(--rust)}
+  .undobtn{border:1px solid var(--jade);background:transparent;color:var(--jade-deep);
+    font-family:inherit;font-size:12px;padding:5px 11px;border-radius:5px;cursor:pointer;margin-left:6px}
+  .undobtn:hover{background:var(--jade);color:#fff}
+  .group.decided{opacity:.5}
+  .group.decided .group-head{border-left-color:var(--mut)!important}
+  .decided-tag{font-family:ui-monospace,monospace;font-size:11px;color:var(--mut);margin-left:6px}
   .mtout{padding:8px 18px 12px 26px;font-size:13px;color:var(--jade-deep);background:#f2f7f3;border-top:1px solid var(--line)}
   .mtout.bad{color:var(--rust)}
   .mtout .bt{font-family:ui-monospace,monospace;font-size:12px;color:var(--mut);margin-top:4px}
@@ -527,11 +539,18 @@
       <div class="switch" id="viewmode"><button data-v="fwd" class="on">Forward EN→AR</button><button data-v="rev">Reverse AR→EN</button></div>
       <button class="btn ghost" id="loadgloss">Load glossary…</button>
       <button class="btn ghost" id="checkgloss">Check adherence</button>
-      <button class="btn ghost" id="approveall">Approve all → term base</button>
+      <button class="btn ghost" id="approveall">Approve all → vault</button>
+      <button class="btn ghost" id="decpanelbtn">Decisions (0)</button>
       <div class="switch" id="verifier"><button data-v="labse" class="on">LaBSE</button><button data-v="mt">Back-translation</button></div>
       <button class="btn ghost" id="mtall">Verify all</button>
       <button class="btn ghost hidden" id="llmall">LLM-check all</button>
       <span class="hint" id="toolshint"></span>
+    </div>
+    <div class="card hidden" id="dec-panel" style="margin:0 0 14px">
+      <div class="row"><h3 style="margin:0">Suppressed decisions <span class="hint" id="dec-count"></span></h3>
+        <button class="btn ghost" id="dec-clear" style="margin-left:auto">Clear all</button>
+      </div>
+      <div id="dec-list" style="margin-top:12px"></div>
     </div>
     <div id="auxout"></div>
 

@@ -33,6 +33,8 @@ class ConcordAPI:
         self._embedder = None
         from .core.termbase import TermBase
         self._termbase = TermBase().load()
+        from .core.decisions import Decisions
+        self._decisions = Decisions().load()
         self._llm_cfg: Optional[llm_mod.LLMConfig] = None
         self._model_kind = "simalign"
         self._model_name = "bert"
@@ -172,6 +174,7 @@ class ConcordAPI:
                     flags = self._labse_prefilter(
                         flags, ec.include_consistent,
                         float(cfg.get("prefilter_threshold", 0.98)))
+                flags = self._apply_decisions(flags, ec.include_consistent)
                 self._flags = flags
                 inc = sum(1 for f in flags if self._is_inconsistent(f))
                 self._log(f"Grouped {len(flags)} n-gram(s) — {inc} inconsistent")
@@ -203,12 +206,29 @@ class ConcordAPI:
 
     @staticmethod
     def _is_inconsistent(f) -> bool:
-        """A flag is inconsistent if it has >=2 spans and the LaBSE pre-filter
-        (if run) did not clear it as a near-identical duplicate. Variants that
-        merely mean similar things (valid synonyms) stay inconsistent."""
-        if f.distinct < 2:
+        """A flag is inconsistent if it has >=2 spans, the LaBSE pre-filter (if
+        run) did not clear it as a near-identical duplicate, and the reviewer
+        has not already decided it (accepted/dismissed)."""
+        if f.distinct < 2 or f.decided:
             return False
         return not (f.verify and f.verify.get("cleared"))
+
+    def _apply_decisions(self, flags, include_consistent):
+        """Suppress flags the reviewer already decided (accepted/dismissed) so
+        they never resurface. In all-n-grams mode they stay, marked as decided;
+        otherwise they are dropped from the results."""
+        kept, n = [], 0
+        for f in flags:
+            st = self._decisions.status_of(f.ngram)
+            if st:
+                f.decided = st
+                n += 1
+                if not include_consistent:
+                    continue
+            kept.append(f)
+        if n:
+            self._log(f"Suppressed {n} previously-decided flag(s)")
+        return kept
 
     def _faithfulness_filter(self, flags, include_consistent, threshold=0.6):
         """Drop variant spans that don't actually translate the source n-gram
@@ -303,6 +323,7 @@ class ConcordAPI:
                 "verify": f.verify, "dropped": f.dropped,
                 "approved": f.termbase_approved,
                 "tb_violation": f.termbase_violation,
+                "decided": f.decided,
                 "variants": [{
                     "span": v.span, "count": v.count,
                     "occurrences": [{
@@ -456,6 +477,22 @@ class ConcordAPI:
             return {"verdicts": verdicts, "method": method}
         except Exception as e:
             return {"error": str(e), "trace": traceback.format_exc()[-600:]}
+
+    # ---- per-flag decisions (accept / dismiss) ----
+    def decide_flag(self, ngram: str, status: str, note: str = "") -> dict:
+        """Record a reviewer verdict so this flag is not shown again."""
+        return {"ok": True, "count": self._decisions.set(ngram, status, note)}
+
+    def undecide_flag(self, key: str) -> dict:
+        return {"ok": True, "count": self._decisions.remove(key)}
+
+    def decisions_info(self) -> dict:
+        return {"count": len(self._decisions),
+                "entries": self._decisions.as_list()}
+
+    def clear_decisions(self) -> dict:
+        self._decisions.clear()
+        return {"ok": True, "count": 0}
 
     # ---- approved term base (persistent) ----
     def termbase_info(self) -> dict:
