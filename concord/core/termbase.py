@@ -57,6 +57,17 @@ class TermBase:
         self.save()
         return len(self.entries)
 
+    def add_many(self, pairs) -> int:
+        """Add/overwrite many (source, target) pairs, saving once."""
+        now = datetime.now().isoformat(timespec="seconds")
+        for source, target in pairs:
+            source, target = source.strip(), target.strip()
+            if source and target:
+                self.entries[_key(source)] = {
+                    "source": source, "target": target, "updated": now}
+        self.save()
+        return len(self.entries)
+
     def remove(self, key: str) -> int:
         self.entries.pop(_key(key), None)
         self.save()

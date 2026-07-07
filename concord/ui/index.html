@@ -231,6 +231,27 @@
   .analyze-row{max-width:1120px;margin:20px auto 0;display:flex;align-items:center;gap:14px}
   .analyze-row .btn{font-size:16px;padding:11px 26px}
 
+  /* n-gram vault page */
+  .vault-wrap{max-width:1000px;margin:0 auto}
+  .vault-head{display:flex;align-items:flex-start;gap:14px;margin-bottom:16px;flex-wrap:wrap}
+  .vault-add{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  .vault-add input{flex:1;min-width:180px;padding:9px 12px;border:1px solid var(--line);
+    border-radius:6px;font-family:inherit;font-size:14px;background:#fff;color:var(--ink)}
+  .vault-search{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:6px;
+    font-family:inherit;font-size:14px;background:#fff;color:var(--ink);margin-bottom:12px}
+  .vrowe{display:flex;gap:12px;align-items:center;padding:9px 12px;border:1px solid var(--line);
+    border-radius:7px;background:var(--paper-2);margin-bottom:7px}
+  .vrowe .vsrc{flex:1;font-weight:600}
+  .vrowe .vtgt{flex:1;direction:rtl;text-align:right}
+  .vrowe input{flex:1;padding:6px 9px;border:1px solid var(--line);border-radius:5px;
+    font-family:inherit;font-size:14px;background:#fff}
+  .vrowe .vtgt input{direction:rtl;text-align:right}
+  .vrowe .va{border:0;background:transparent;color:var(--mut);cursor:pointer;
+    font-family:ui-monospace,monospace;font-size:11px;padding:3px 6px}
+  .vrowe .va:hover{color:var(--jade)}
+  .vrowe .va.del:hover{color:var(--rust)}
+  .vmeta{font-family:ui-monospace,monospace;font-size:10px;color:var(--mut);width:96px;flex:none;text-align:right}
+
   /* run page console */
   .runhead{margin-bottom:12px}
   .console{background:#0f1a15;color:#cfe4d8;border-radius:8px;padding:14px 16px;
@@ -259,6 +280,7 @@
   <div class="nav">
     <button class="step on" id="nav-settings" data-p="settings">1 · Settings</button>
     <button class="step" id="nav-run" data-p="run" disabled>2 · Run &amp; Results</button>
+    <button class="step" id="nav-vault" data-p="vault">3 · N-gram Vault</button>
   </div>
 </div></header>
 
@@ -345,7 +367,7 @@
 
         <h4 class="mgroup">Consistency over time</h4>
         <div class="formgrid">
-          <label>Check against term base <span class="help" data-tip="Also flag any phrase whose translation differs from a previously approved decision in your saved term base — even if this file is internally consistent.">?</span></label>
+          <label>Check against vault <span class="help" data-tip="Also flag any phrase whose translation differs from an approved decision in your N-gram Vault — even if this file is internally consistent.">?</span></label>
           <div><div class="switch" id="tbmode"><button data-v="off" class="on">Off</button><button data-v="on">On</button></div></div>
         </div>
 
@@ -398,14 +420,12 @@
         </div>
 
         <div class="card">
-          <h3>Approved term base</h3>
+          <h3>N-gram Vault</h3>
           <div class="row">
             <span class="hint" id="tbcount">0 approved terms</span>
-            <button class="btn ghost" id="tbview">View / manage</button>
-            <button class="btn ghost" id="tbclear">Clear all</button>
+            <button class="btn ghost" id="tbview">Open vault →</button>
           </div>
-          <div class="hint" style="margin-top:8px">saved to ~/.concord/termbase.json · persists across sessions · toggle the check under Metrics</div>
-          <div id="tblist"></div>
+          <div class="hint" style="margin-top:8px">Approved decisions, checked across files &amp; over time. View &amp; edit on the N-gram Vault page; toggle the check under Metrics.</div>
         </div>
 
       </div>
@@ -413,6 +433,32 @@
     <div class="analyze-row">
       <button class="btn" id="run" disabled>Analyze →</button>
       <span class="hint" id="run-hint">Load a model and open files to enable.</span>
+    </div>
+  </section>
+
+  <!-- ==================== PAGE 3 · N-GRAM VAULT ==================== -->
+  <section class="page hidden" id="page-vault">
+    <div class="vault-wrap">
+      <div class="vault-head">
+        <div>
+          <h3 style="margin:0">N-gram Vault</h3>
+          <div class="hint" id="vault-count">0 approved terms · ~/.concord/termbase.json</div>
+        </div>
+        <div class="row" style="margin-left:auto">
+          <button class="btn ghost" id="vault-import">Import…</button>
+          <button class="btn ghost" id="vault-export">Export CSV</button>
+          <button class="btn ghost" id="vault-clear">Clear all</button>
+        </div>
+      </div>
+
+      <div class="vault-add">
+        <input type="text" id="vault-add-src" placeholder="English source term…">
+        <input type="text" id="vault-add-tgt" placeholder="Approved Arabic translation…" dir="rtl">
+        <button class="btn" id="vault-addbtn">Add / update</button>
+      </div>
+
+      <input type="text" id="vault-search" class="vault-search" placeholder="Search source or translation…">
+      <div id="vault-list"></div>
     </div>
   </section>
 
@@ -434,7 +480,7 @@
       <div class="cell"><div class="n" id="s-ngrams">0</div><div class="k">N-grams</div></div>
       <div class="cell"><div class="n flag" id="s-flag">0</div><div class="k">Inconsistent</div></div>
       <div class="cell"><div class="n" id="s-rev">0</div><div class="k">Overloaded spans</div></div>
-      <div class="cell"><div class="n" id="s-tbv">0</div><div class="k">Term-base viol.</div></div>
+      <div class="cell"><div class="n" id="s-tbv">0</div><div class="k">Vault viol.</div></div>
       <div class="cell"><div class="n" id="s-ph">0</div><div class="k" id="ph-k" style="cursor:pointer">Placeholder ▸</div></div>
     </div>
 

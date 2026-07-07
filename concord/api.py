@@ -481,9 +481,56 @@ class ConcordAPI:
     def remove_term(self, key: str) -> dict:
         return {"ok": True, "count": self._termbase.remove(key)}
 
+    def update_term(self, old_key: str, source: str, target: str) -> dict:
+        """Edit an entry: rename the key if the source changed, set target."""
+        if old_key and old_key != source.strip().lower():
+            self._termbase.remove(old_key)
+        self._termbase.add(source, target)
+        return {"ok": True, "count": len(self._termbase)}
+
     def clear_termbase(self) -> dict:
         self._termbase.clear()
         return {"ok": True, "count": 0}
+
+    def export_vault(self) -> dict:
+        from webview import SAVE_DIALOG
+        import csv
+        path = self._window.create_file_dialog(
+            SAVE_DIALOG, save_filename="ngram-vault.csv")
+        if not path:
+            return {"ok": False}
+        p = path if isinstance(path, str) else path[0]
+        with open(p, "w", newline="", encoding="utf-8-sig") as fh:
+            w = csv.writer(fh)
+            w.writerow(["source", "target"])
+            for e in self._termbase.as_list():
+                w.writerow([e["source"], e["target"]])
+        return {"ok": True, "path": p, "count": len(self._termbase)}
+
+    def import_vault(self) -> dict:
+        from webview import OPEN_DIALOG
+        from .core import glossary as gl
+        paths = self._window.create_file_dialog(
+            OPEN_DIALOG, allow_multiple=False,
+            file_types=("Vault (*.csv;*.json)", "All files (*.*)"))
+        if not paths:
+            return {"ok": False, "added": 0}
+        p = paths[0] if isinstance(paths, (list, tuple)) else paths
+        try:
+            pairs = []
+            if p.lower().endswith(".json"):
+                import json
+                data = json.load(open(p, encoding="utf-8"))
+                entries = data.get("entries", data)
+                for v in entries.values():
+                    if isinstance(v, dict) and v.get("source") and v.get("target"):
+                        pairs.append((v["source"], v["target"]))
+            else:
+                pairs = [(e.source, e.target) for e in gl.load_glossary_csv(p)]
+            count = self._termbase.add_many(pairs)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        return {"ok": True, "added": len(pairs), "count": count}
 
     # ---- glossary / termbase ----
     def load_glossary(self) -> dict:

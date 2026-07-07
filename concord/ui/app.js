@@ -10,6 +10,7 @@ function showPage(p){
 }
 $("#nav-settings").addEventListener("click",()=>showPage("settings"));
 $("#nav-run").addEventListener("click",()=>{ if(!$("#nav-run").disabled) showPage("run"); });
+$("#nav-vault").addEventListener("click",()=>{ showPage("vault"); renderVault(); });
 $("#back-settings").addEventListener("click",()=>showPage("settings"));
 
 // ---------- under-the-hood console ----------
@@ -162,7 +163,10 @@ let checkTB=false;
 $("#tbmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
   $("#tbmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); checkTB=b.dataset.v==="on";
 }));
-function refreshTB(){ if(!window.pywebview) return; api().termbase_info().then(r=>$("#tbcount").textContent=`${r.count} approved term(s)`); }
+function refreshTB(){ if(!window.pywebview) return; api().termbase_info().then(r=>{
+  $("#tbcount").textContent=`${r.count} approved term(s)`;
+  $("#vault-count").textContent=`${r.count} approved term(s) · ~/.concord/termbase.json`;
+}); }
 window.addEventListener("pywebviewready", refreshTB);
 $("#minvar").addEventListener("input",e=>$("#minvarlabel").textContent=e.target.value+"×");
 $("#minocc").addEventListener("input",e=>$("#occlabel").textContent=e.target.value+"×");
@@ -271,13 +275,13 @@ function render(){
     }).join("");
     return `<div class="group ${f.inconsistent?'':'consistent'} ${f.tb_violation?'violation':''}">
       <div class="group-head" data-g="${gi}">
-        <span class="chev">▸</span><span class="badge">${f.tb_violation?'term-base':f.distinct+' span'+(f.distinct>1?'s':'')}</span>
+        <span class="chev">▸</span><span class="badge">${f.tb_violation?'vault':f.distinct+' span'+(f.distinct>1?'s':'')}</span>
         <span class="src">${hl(f.ngram,q)}</span>
         <span class="meta">${f.total} occ${f.inconsistent?` · ${Math.round((f.score||0)*100)}% split`:' · consistent'}${f.verify?` · LaBSE ${esc(f.verify.verdict)}${f.verify.agreement!=null?` (${f.verify.agreement})`:''}`:''}</span>
         ${f.inconsistent?`<button class="whybtn" data-g="${gi}">why flagged?</button>`:''}
         <button class="llmbtn ${$("#llm-status").dataset.ok?'':'hidden'}" data-g="${gi}">LLM check</button>
       </div>
-      ${f.approved?`<div class="tbnote ${f.tb_violation?'bad':''}">${f.tb_violation?'⚠ Term-base violation — ':'✓ Matches term base — '}approved: <span dir="rtl">${esc(f.approved)}</span>${f.tb_violation?` · this file uses ${f.variants.filter(v=>v.span!==f.approved).map(v=>`<span dir="rtl">${esc(v.span)}</span>`).join(", ")}`:''}</div>`:''}
+      ${f.approved?`<div class="tbnote ${f.tb_violation?'bad':''}">${f.tb_violation?'⚠ Vault violation — ':'✓ Matches vault — '}approved: <span dir="rtl">${esc(f.approved)}</span>${f.tb_violation?` · this file uses ${f.variants.filter(v=>v.span!==f.approved).map(v=>`<span dir="rtl">${esc(v.span)}</span>`).join(", ")}`:''}</div>`:''}
       ${f.dropped&&f.dropped.length?`<div class="dropnote">Dropped ${f.dropped.length} mis-aligned span(s) — not a translation of the term: ${f.dropped.map(d=>`<span dir="rtl">${esc(d.span)}</span> (sim ${d.sim})`).join(", ")}</div>`:''}
       <div class="variants hidden">${vars}</div>
       <div class="whyout hidden" data-g="${gi}"></div>
@@ -447,16 +451,70 @@ $("#approveall").addEventListener("click", async ()=>{
   render();
   $("#toolshint").textContent=`Approved ${r.approved} term(s) · ${r.count} in term base.`;
 });
-$("#tbview").addEventListener("click", async ()=>{
-  const r=await api().termbase_info(); const box=$("#tblist");
-  if(!r.count){ box.innerHTML=`<div class="hint" style="margin-top:10px">Term base is empty.</div>`; return; }
-  box.innerHTML=`<div style="margin-top:12px">`+r.entries.map(e=>`<div class="seg"><div class="seg-src">${esc(e.source)}</div><div dir="rtl" style="flex:1;font-size:15px">${esc(e.target)}</div><button class="revert-seg" data-k="${esc(e.key)}" style="visibility:visible">remove</button></div>`).join("")+`</div>`;
-  box.querySelectorAll("[data-k]").forEach(b=>b.addEventListener("click",async()=>{ await api().remove_term(b.dataset.k); refreshTB(); $("#tbview").click(); }));
+// Settings "Open vault →" button jumps to the vault page
+$("#tbview").addEventListener("click", ()=>{ showPage("vault"); renderVault(); });
+
+// ---------- N-gram Vault page ----------
+let vaultEntries=[];
+async function renderVault(){
+  const r=await api().termbase_info();
+  vaultEntries=r.entries||[];
+  refreshTB();
+  paintVault();
+}
+function paintVault(){
+  const q=$("#vault-search").value.trim().toLowerCase();
+  const box=$("#vault-list");
+  let data=vaultEntries;
+  if(q) data=data.filter(e=>e.source.toLowerCase().includes(q)||e.target.toLowerCase().includes(q));
+  if(!vaultEntries.length){ box.innerHTML=`<div class="empty"><div class="big">🗄</div><strong>Vault is empty</strong><div style="margin-top:6px">Approve terms from the results page, or add them above.</div></div>`; return; }
+  if(!data.length){ box.innerHTML=`<div class="empty">No matches.</div>`; return; }
+  box.innerHTML=data.map(e=>`<div class="vrowe" data-k="${esc(e.key)}">
+    <span class="vsrc">${esc(e.source)}</span>
+    <span class="vtgt">${esc(e.target)}</span>
+    <span class="vmeta">${esc((e.updated||'').slice(0,10))}</span>
+    <button class="va edit">edit</button><button class="va del">✕</button>
+  </div>`).join("");
+  box.querySelectorAll(".vrowe").forEach(row=>{
+    const key=row.dataset.k;
+    row.querySelector(".del").addEventListener("click",async()=>{
+      if(!confirm("Remove this entry?")) return;
+      await api().remove_term(key); await renderVault();
+    });
+    row.querySelector(".edit").addEventListener("click",()=>{
+      const e=vaultEntries.find(x=>x.key===key); if(!e) return;
+      row.innerHTML=`<span class="vsrc"><input value="${esc(e.source)}"></span>
+        <span class="vtgt"><input value="${esc(e.target)}" dir="rtl"></span>
+        <button class="va save">save</button><button class="va del cancel">cancel</button>`;
+      const [si,ti]=row.querySelectorAll("input");
+      row.querySelector(".save").addEventListener("click",async()=>{
+        await api().update_term(key, si.value, ti.value); await renderVault();
+      });
+      row.querySelector(".cancel").addEventListener("click",()=>paintVault());
+      si.focus();
+    });
+  });
+}
+$("#vault-search").addEventListener("input",paintVault);
+$("#vault-addbtn").addEventListener("click",async()=>{
+  const s=$("#vault-add-src").value.trim(), t=$("#vault-add-tgt").value.trim();
+  if(!s||!t){ return; }
+  await api().approve_term(s,t); $("#vault-add-src").value=""; $("#vault-add-tgt").value="";
+  await renderVault();
 });
-$("#tbclear").addEventListener("click", async ()=>{
+$("#vault-export").addEventListener("click",async()=>{
+  const r=await api().export_vault();
+  if(r.ok) alert(`Exported ${r.count} term(s) to:\n${r.path}`);
+});
+$("#vault-import").addEventListener("click",async()=>{
+  const r=await api().import_vault();
+  if(r.error){ alert("Import failed: "+r.error); return; }
+  if(r.ok){ await renderVault(); alert(`Imported ${r.added} term(s). Vault now has ${r.count}.`); }
+});
+$("#vault-clear").addEventListener("click",async()=>{
   const r0=await api().termbase_info(); if(!r0.count) return;
   if(!confirm(`Clear all ${r0.count} approved term(s)? This cannot be undone.`)) return;
-  await api().clear_termbase(); refreshTB(); $("#tblist").innerHTML="";
+  await api().clear_termbase(); await renderVault();
 });
 
 // ---------- local verifier: back-translation | LaBSE ----------
