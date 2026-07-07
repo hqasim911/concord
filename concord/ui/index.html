@@ -240,13 +240,16 @@
   .vault-search{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:6px;
     font-family:inherit;font-size:14px;background:#fff;color:var(--ink);margin-bottom:12px}
   .vrowe{display:flex;gap:12px;align-items:center;padding:9px 12px;border:1px solid var(--line);
-    border-radius:7px;background:#e7efe9;margin-bottom:7px;transition:background .25s,border-color .25s}
-  .vrowe:focus-within{background:#fff3dc;border-color:var(--amber)}   /* editing */
+    border-radius:7px;background:#dfeae2;margin-bottom:7px;transition:background .2s,border-color .2s}
+  .vrowe:focus-within{background:#fff;border-color:var(--jade)}       /* editing -> white */
   .vrowe.saved{border-color:var(--jade);background:#cfe9d8}           /* just saved */
   .vrowe.sel{border-color:var(--jade-deep);box-shadow:inset 3px 0 0 var(--jade-deep)}
   .vrowe .vsel{flex:none;width:16px;height:16px;accent-color:var(--jade);cursor:pointer}
-  .vrowe input.vsrc-i,.vrowe input.vtgt-i{flex:1;padding:6px 9px;border:1px solid var(--line);
-    border-radius:5px;font-family:inherit;font-size:14px;background:#fff}
+  /* inputs blend into the row's solid color, turn white only while editing */
+  .vrowe input.vsrc-i,.vrowe input.vtgt-i{flex:1;padding:6px 9px;border:1px solid transparent;
+    border-radius:5px;font-family:inherit;font-size:14px;background:transparent;color:var(--ink)}
+  .vrowe:focus-within input.vsrc-i,.vrowe:focus-within input.vtgt-i{background:#fff}
+  .vrowe input.vsrc-i:focus,.vrowe input.vtgt-i:focus{background:#fff;border-color:var(--jade)}
   .vrowe input.vtgt-i{direction:rtl;text-align:right}
   .vrowe .va{border:0;background:transparent;color:var(--mut);cursor:pointer;
     font-family:ui-monospace,monospace;font-size:11px;padding:3px 6px}
