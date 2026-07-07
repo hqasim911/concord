@@ -124,6 +124,17 @@
   .llmout{padding:8px 18px 12px 26px;font-size:13px;color:var(--jade-deep);background:#fbfaf5}
   .llmout.bad{color:var(--rust)}
 
+  /* custom "correct term" row */
+  .customhead{background:#f3f8f4}
+  .customspan{flex:1;padding:7px 10px;border:1px solid var(--line);border-radius:6px;
+    font-family:inherit;font-size:15px;direction:rtl;text-align:right;background:#fff;color:var(--ink)}
+  .customspan:focus{outline:2px solid var(--jade);border-color:var(--jade)}
+  .usecustom,.approvecustom{border:1px solid var(--jade-deep);background:transparent;color:var(--jade-deep);
+    font-family:inherit;font-size:12px;padding:5px 11px;border-radius:5px;cursor:pointer;flex:none}
+  .usecustom{border-color:var(--jade);color:var(--jade-deep)}
+  .usecustom:hover{background:var(--jade);color:#fff}
+  .approvecustom:hover,.approvecustom.done{background:var(--jade-deep);color:#fff}
+
   /* per-flag decisions */
   .decbtn{border:1px solid var(--line);background:transparent;color:var(--mut);font-family:inherit;
     font-size:12px;padding:5px 11px;border-radius:5px;cursor:pointer;margin-left:6px}

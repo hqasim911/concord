@@ -293,6 +293,13 @@ function render(){
         </div>
         <div class="segs">${rows}</div></div>`;
     }).join("");
+    const customRow=`<div class="vargroup">
+      <div class="varhead customhead">
+        <span class="vartag">Correct term</span>
+        <input class="customspan" data-g="${gi}" placeholder="type the correct translation if the spans above are wrong…" value="${f.approved?esc(f.approved):''}">
+        <button class="usecustom" data-g="${gi}">Use for all ${f.total}</button>
+        <button class="approvecustom" data-g="${gi}">Approve ✓</button>
+      </div></div>`;
     const dec = f.decided
       ? `<span class="decided-tag">decided: ${esc(f.decided)}</span><button class="undobtn" data-g="${gi}">Undo</button>`
       : (f.inconsistent
@@ -308,7 +315,7 @@ function render(){
       </div>
       ${f.approved?`<div class="tbnote ${f.tb_violation?'bad':''}">${f.tb_violation?'⚠ Vault violation — ':'✓ Matches vault — '}approved: <span dir="rtl">${esc(f.approved)}</span>${f.tb_violation?` · this file uses ${f.variants.filter(v=>v.span!==f.approved).map(v=>`<span dir="rtl">${esc(v.span)}</span>`).join(", ")}`:''}</div>`:''}
       ${f.dropped&&f.dropped.length?`<div class="dropnote">Dropped ${f.dropped.length} mis-aligned span(s) — not a translation of the term: ${f.dropped.map(d=>`<span dir="rtl">${esc(d.span)}</span> (sim ${d.sim})`).join(", ")}</div>`:''}
-      <div class="variants hidden">${vars}</div>
+      <div class="variants hidden">${customRow}${vars}</div>
       <div class="whyout hidden" data-g="${gi}"></div>
       <div class="mtout hidden" data-g="${gi}"></div>
       <div class="llmout hidden" data-g="${gi}"></div>
@@ -366,6 +373,31 @@ function bind(host,data){
     f.approved=v.span;
     btn.closest(".variants").querySelectorAll(".approvebtn").forEach(b=>{b.classList.remove("done");b.textContent="Approve ✓";});
     btn.classList.add("done"); btn.textContent="Approved ✓";
+  }));
+  host.querySelectorAll(".approvecustom").forEach(btn=>btn.addEventListener("click",e=>{
+    e.stopPropagation();
+    const f=data[+btn.dataset.g];
+    const inp=btn.closest(".varhead").querySelector(".customspan");
+    const val=inp.value.trim(); if(!val){ inp.focus(); return; }
+    api().approve_term(f.ngram, val).then(()=>refreshTB());
+    f.approved=val; btn.classList.add("done"); btn.textContent="Approved ✓";
+  }));
+  host.querySelectorAll(".usecustom").forEach(btn=>btn.addEventListener("click",e=>{
+    e.stopPropagation();
+    const f=data[+btn.dataset.g];
+    const inp=btn.closest(".varhead").querySelector(".customspan");
+    const text=inp.value.trim(); if(!text){ inp.focus(); return; }
+    const group=btn.closest(".group");
+    f.variants.forEach(vv=>vv.occurrences.forEach(o=>{
+      if(text===segOriginal.get(o.sid)) edits.delete(o.sid); else edits.set(o.sid,text);
+      api().set_edit(o.sid,text);
+      const ta=group.querySelector(`textarea.seg-tgt[data-sid="${cssEsc(o.sid)}"]`);
+      if(ta){ta.value=text; ta.closest(".seg").classList.toggle("changed",edits.has(o.sid)); grow(ta);}
+    }));
+    refreshDirty();
+  }));
+  host.querySelectorAll(".customspan").forEach(inp=>inp.addEventListener("keydown",e=>{
+    if(e.key==="Enter"){ e.preventDefault(); inp.closest(".varhead").querySelector(".approvecustom").click(); }
   }));
   host.querySelectorAll(".llmbtn").forEach(btn=>btn.addEventListener("click",async e=>{
     e.stopPropagation(); const f=data[+btn.dataset.g];
