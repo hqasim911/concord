@@ -72,6 +72,48 @@ class ConcordAPI:
         threading.Thread(target=work, daemon=True).start()
         return {"started": True}
 
+    # ---- verification models (LaBSE, MT) ----
+    def _ensure_labse(self):
+        if self._embedder is None:
+            from .core import embed as emb
+            self._emit("aux-model-status", {"model": "labse", "state": "loading"})
+            self._log("Loading LaBSE (~1.8GB)…")
+            try:
+                self._embedder = emb.Embedder()
+            except Exception as e:
+                self._emit("aux-model-status",
+                           {"model": "labse", "state": "error", "error": str(e)})
+                raise
+            self._emit("aux-model-status", {"model": "labse", "state": "ready"})
+            self._log("LaBSE ready")
+        return self._embedder
+
+    def _ensure_mt(self):
+        if self._mt is None:
+            from .core import mt as mt_mod
+            self._emit("aux-model-status", {"model": "mt", "state": "loading"})
+            self._log("Loading MT model (opus-mt-ar-en, ~300MB)…")
+            try:
+                self._mt = mt_mod.Translator()
+            except Exception as e:
+                self._emit("aux-model-status",
+                           {"model": "mt", "state": "error", "error": str(e)})
+                raise
+            self._emit("aux-model-status", {"model": "mt", "state": "ready"})
+            self._log("MT model ready")
+        return self._mt
+
+    def load_labse(self) -> dict:
+        threading.Thread(target=self._ensure_labse, daemon=True).start()
+        return {"started": True}
+
+    def load_mt(self) -> dict:
+        threading.Thread(target=self._ensure_mt, daemon=True).start()
+        return {"started": True}
+
+    def models_status(self) -> dict:
+        return {"labse": self._embedder is not None, "mt": self._mt is not None}
+
     # ---- file intake ----
     def open_files(self) -> dict:
         """Native file picker -> parse selected XLIFF files."""
@@ -241,10 +283,7 @@ class ConcordAPI:
                  for f in flags if f.distinct >= 2]
         if not items:
             return flags
-        if self._embedder is None:
-            self._log("Faithfulness filter: loading LaBSE (~1.8GB)…")
-            self._embedder = emb_mod.Embedder()
-            self._log("LaBSE ready")
+        self._ensure_labse()
         self._log(f"Faithfulness filter: checking {len(items)} flag(s) against "
                   f"the source term (threshold {threshold:.2f})…")
         rep = {r["ngram"]: r for r in
@@ -287,10 +326,7 @@ class ConcordAPI:
                  for f in flags if f.distinct >= 2]
         if not items:
             return flags
-        if self._embedder is None:
-            self._log("LaBSE pre-filter: loading LaBSE (~1.8GB)…")
-            self._embedder = emb_mod.Embedder()
-            self._log("LaBSE ready")
+        self._ensure_labse()
         self._log(f"LaBSE pre-filter: verifying {len(items)} flag(s) "
                   f"at identity threshold {threshold:.2f}…")
         vmap = {v["ngram"]: v
@@ -458,18 +494,12 @@ class ConcordAPI:
         try:
             if method == "labse":
                 from .core import embed as emb_mod
-                if self._embedder is None:
-                    self._log("Loading LaBSE embeddings (~1.8GB)…")
-                    self._embedder = emb_mod.Embedder()
-                    self._log("LaBSE ready")
+                self._ensure_labse()
                 self._log(f"Embedding {len(items)} flag(s)…")
                 verdicts = emb_mod.verify_all(self._embedder, items)
             else:
                 from .core import mt as mt_mod
-                if self._mt is None:
-                    self._log("Loading MT model (opus-mt-ar-en, ~300MB)…")
-                    self._mt = mt_mod.Translator()
-                    self._log("MT model ready")
+                self._ensure_mt()
                 n = sum(len(it["spans"]) for it in items)
                 self._log(f"Back-translating {n} span(s)…")
                 verdicts = mt_mod.verify_all(self._mt, items)

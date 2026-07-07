@@ -410,23 +410,39 @@
             <button class="btn" id="loadmodel">Load model</button>
           </div>
           <div class="formgrid" style="margin-top:14px">
-            <label>Backend</label>
+            <label>Backend <span class="help" data-tip="How words are aligned. SimAlign & awesome-align are comparable alone; Ensemble uses both and keeps only links they agree on (higher precision) — but loads two models.">?</span></label>
             <div class="switch" id="backendpick">
               <button data-v="simalign" class="on">SimAlign</button>
               <button data-v="awesome">awesome-align</button>
               <button data-v="ensemble">Ensemble</button>
             </div>
-            <label>Base model</label>
+            <label>Base model <span class="help" data-tip="The multilingual model behind the aligner. mBERT is smaller/faster (~700MB); XLM-R is larger and often sharper on Arabic. Downloaded on first load.">?</span></label>
             <div class="switch" id="modelpick">
               <button data-v="bert" class="on">mBERT (faster)</button>
               <button data-v="xlmr">XLM-R (accuracy)</button>
             </div>
-            <label>Ensemble mode</label>
+          </div>
+          <div class="formgrid hidden" id="ensmode-row" style="margin-top:12px">
+            <label>Ensemble mode <span class="help" data-tip="Intersect keeps only links both aligners agree on (precise); Union keeps links from either (higher recall — fuller spans, fewer truncations).">?</span></label>
             <div class="switch" id="ensmode">
               <button data-v="intersect" class="on">Intersect (precise)</button>
               <button data-v="union">Union (recall)</button>
             </div>
           </div>
+
+          <div class="modelbar" style="margin-top:14px">
+            <span class="status-dot" id="labse-dot"></span>
+            <span id="labse-text" style="flex:1">LaBSE (verification) — not loaded.</span>
+            <span class="help" data-tip="Multilingual sentence embeddings (~1.8GB) used by the LaBSE pre-filter, faithfulness filter, and the Verify-all tool. Loads on first use — preload here to avoid a mid-analysis download.">?</span>
+            <button class="btn ghost" id="labse-load">Load now</button>
+          </div>
+          <div class="modelbar" style="margin-top:8px">
+            <span class="status-dot" id="mt-dot"></span>
+            <span id="mt-text" style="flex:1">MT back-translation — not loaded.</span>
+            <span class="help" data-tip="Local Marian ar→en model (~300MB) for the optional back-translation verifier. Loads on first use.">?</span>
+            <button class="btn ghost" id="mt-load">Load now</button>
+          </div>
+
           <div class="llmsub">
             <h4>LLM — optional, for semantic verdicts</h4>
             <div class="body">

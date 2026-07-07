@@ -38,6 +38,7 @@ $("#modelpick").querySelectorAll("button").forEach(b=>b.addEventListener("click"
 $("#backendpick").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
   $("#backendpick").querySelectorAll("button").forEach(x=>x.classList.remove("on"));
   b.classList.add("on"); backendChoice=b.dataset.v;
+  $("#ensmode-row").classList.toggle("hidden", backendChoice!=="ensemble");
 }));
 let ensembleMode="intersect";
 $("#ensmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
@@ -53,6 +54,23 @@ window.addEventListener("model-status", e=>{
   else if(d.state==="ready"){ txt.textContent=`Model ready: ${d.model}.`; clog(`Model ready: ${d.model}`,"em"); maybeEnableRun(); }
   else if(d.state==="error"){ txt.textContent="Model error: "+d.error; clog("Model error: "+d.error,"err"); }
 });
+
+// verification models (LaBSE / MT)
+window.addEventListener("aux-model-status", e=>{
+  const d=e.detail, lab=d.model==="labse";
+  const dot=$(lab?"#labse-dot":"#mt-dot"), txt=$(lab?"#labse-text":"#mt-text");
+  const name=lab?"LaBSE (verification)":"MT back-translation";
+  dot.className="status-dot "+(d.state==="ready"?"ready":d.state==="loading"?"loading":d.state==="error"?"error":"");
+  if(d.state==="loading"){ txt.textContent=`${name} — loading…`; clog(`Loading ${name}…`); }
+  else if(d.state==="ready"){ txt.textContent=`${name} — ready.`; clog(`${name} ready`,"em"); }
+  else if(d.state==="error"){ txt.textContent=`${name} — error: ${d.error}`; clog(`${name} error: ${d.error}`,"err"); }
+});
+$("#labse-load").addEventListener("click",()=>api().load_labse());
+$("#mt-load").addEventListener("click",()=>api().load_mt());
+function refreshModelStatus(){ if(!window.pywebview) return; api().models_status().then(s=>{
+  if(s.labse){ $("#labse-dot").className="status-dot ready"; $("#labse-text").textContent="LaBSE (verification) — ready."; }
+  if(s.mt){ $("#mt-dot").className="status-dot ready"; $("#mt-text").textContent="MT back-translation — ready."; }
+}); }
 
 // ---------- files ----------
 let fileList=[];
@@ -167,7 +185,7 @@ $("#tbmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()
 function refreshTB(){ if(!window.pywebview) return; api().termbase_info().then(r=>{
   const v=$("#vault-count"); if(v) v.textContent=`${r.count} approved term(s) · ~/.concord/termbase.json`;
 }); }
-window.addEventListener("pywebviewready", ()=>{ refreshTB(); refreshDecCount(); });
+window.addEventListener("pywebviewready", ()=>{ refreshTB(); refreshDecCount(); refreshModelStatus(); });
 $("#minvar").addEventListener("input",e=>$("#minvarlabel").textContent=e.target.value+"×");
 $("#minocc").addEventListener("input",e=>$("#occlabel").textContent=e.target.value+"×");
 
