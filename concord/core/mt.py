@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import List, Dict
 
 from .textutil import norm_edit_distance
+from .verify_util import build_verdict
 
 MODEL_NAME = "Helsinki-NLP/opus-mt-ar-en"
 
@@ -80,11 +81,8 @@ def verify_all(translator: Translator, items: List[Dict],
             for j in range(i + 1, len(norm)):
                 maxd = max(maxd, norm_edit_distance(norm[i], norm[j]))
         agreement = round(1.0 - maxd, 3)
-        out.append({
-            "ngram": it["ngram"],
-            "verdict": "duplicate" if agreement >= threshold else "distinct",
-            "agreement": agreement,
-            "summary": f"back-translation agreement {agreement}",
-            "rows": [{"span": s, "note": f"“{bt}”"} for (s, bt) in pairs],
-        })
+        out.append(build_verdict(
+            it["ngram"], agreement, threshold,
+            f"back-translation agreement {agreement}",
+            [{"span": s, "note": f"“{bt}”"} for (s, bt) in pairs]))
     return out

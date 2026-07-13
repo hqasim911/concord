@@ -16,6 +16,8 @@ normalized pooler_output), so no sentence-transformers dependency.
 from __future__ import annotations
 from typing import List, Dict
 
+from .verify_util import build_verdict
+
 MODEL_NAME = "setu4993/LaBSE"
 # Identity threshold: variants are only treated as the SAME (a duplicate /
 # pipeline artifact) when their pairwise cosine is at/above this. It is
@@ -49,12 +51,9 @@ class Embedder:
 DEFAULT_FAITHFULNESS = 0.6
 
 
-def term_faithfulness(embedder: Embedder, items: List[Dict],
-                      threshold: float = DEFAULT_FAITHFULNESS) -> List[Dict]:
-    """For each item, score every variant span against the SOURCE n-gram and
-    mark whether it faithfully translates it. Catches aligner errors where a
-    variant (e.g. لون / 'color') was mis-linked to the term (e.g. 'brand')."""
-    torch = embedder._torch
+def _embed_grouped(embedder: Embedder, items: List[Dict]):
+    """Embed each item's [ngram, *spans] in one batch, then yield
+    (item, term_vec, span_vecs) per item — the scaffold both scorers share."""
     texts: List[str] = []
     slices = []
     for it in items:
@@ -62,15 +61,21 @@ def term_faithfulness(embedder: Embedder, items: List[Dict],
         texts.append(it["ngram"])
         texts.extend(it["spans"])
         slices.append((start, len(it["spans"])))
-
     emb = embedder.embed(texts) if texts else None
-
-    out: List[Dict] = []
     for it, (start, ns) in zip(items, slices):
-        term = emb[start]
-        vecs = emb[start + 1:start + 1 + ns]
+        yield it, emb[start], emb[start + 1:start + 1 + ns]
+
+
+def term_faithfulness(embedder: Embedder, items: List[Dict],
+                      threshold: float = DEFAULT_FAITHFULNESS) -> List[Dict]:
+    """For each item, score every variant span against the SOURCE n-gram and
+    mark whether it faithfully translates it. Catches aligner errors where a
+    variant (e.g. لون / 'color') was mis-linked to the term (e.g. 'brand')."""
+    torch = embedder._torch
+    out: List[Dict] = []
+    for it, term, vecs in _embed_grouped(embedder, items):
         rows = []
-        for i in range(ns):
+        for i in range(len(it["spans"])):
             sim = round(float(torch.dot(vecs[i], term)), 3)
             rows.append({"span": it["spans"][i], "sim": sim,
                          "faithful": sim >= threshold})
@@ -81,35 +86,19 @@ def term_faithfulness(embedder: Embedder, items: List[Dict],
 def verify_all(embedder: Embedder, items: List[Dict],
                threshold: float = DEFAULT_THRESHOLD) -> List[Dict]:
     """items: [{"ngram": str, "spans": [str, ...]}] (groups with >=2 spans).
-    Returns one verdict dict per item, in order (unified shape shared with
-    the MT verifier: ngram, verdict, summary, rows)."""
+    Returns one verdict dict per item, in order (the unified verify_util
+    schema, shared with the MT verifier)."""
     torch = embedder._torch
-    texts: List[str] = []
-    slices = []
-    for it in items:
-        start = len(texts)
-        texts.append(it["ngram"])
-        texts.extend(it["spans"])
-        slices.append((start, len(it["spans"])))
-
-    emb = embedder.embed(texts) if texts else None
-
     out: List[Dict] = []
-    for it, (start, ns) in zip(items, slices):
-        term = emb[start]
-        vecs = emb[start + 1:start + 1 + ns]
+    for it, term, vecs in _embed_grouped(embedder, items):
+        ns = len(it["spans"])
         pair = [float(torch.dot(vecs[i], vecs[j]))
                 for i in range(ns) for j in range(i + 1, ns)]
         min_sim = min(pair) if pair else 1.0
         term_sim = [float(torch.dot(vecs[i], term)) for i in range(ns)]
-        out.append({
-            "ngram": it["ngram"],
-            # 'duplicate' = essentially the same span (exclude); 'distinct' =
-            # genuinely different translation (keep flagged, even if synonyms).
-            "verdict": "duplicate" if min_sim >= threshold else "distinct",
-            "agreement": round(min_sim, 3),
-            "summary": f"min variant similarity {round(min_sim, 3)}",
-            "rows": [{"span": s, "note": f"sim to term {round(ts, 2)}"}
-                     for s, ts in zip(it["spans"], term_sim)],
-        })
+        out.append(build_verdict(
+            it["ngram"], min_sim, threshold,
+            f"min variant similarity {round(min_sim, 3)}",
+            [{"span": s, "note": f"sim to term {round(ts, 2)}"}
+             for s, ts in zip(it["spans"], term_sim)]))
     return out
