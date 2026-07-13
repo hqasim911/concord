@@ -181,6 +181,7 @@ class ConcordAPI:
                     min_occurrences=int(cfg.get("min_occurrences", 2)),
                     fold_taa=bool(cfg.get("fold_taa", True)),
                     strip_clitics=bool(cfg.get("strip_clitics", True)),
+                    strip_diacritics=bool(cfg.get("strip_diacritics", True)),
                     cluster_spans=bool(cfg.get("cluster_spans", True)),
                     cluster_max_dist=float(cfg.get("cluster_max_dist", 0.2)),
                     merge_contained=bool(cfg.get("merge_contained", True)),

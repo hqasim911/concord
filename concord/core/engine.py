@@ -101,6 +101,7 @@ class EngineConfig:
     min_occurrences: int = 2
     fold_taa: bool = True
     strip_clitics: bool = True       # fold الـ / clitics off target terms
+    strip_diacritics: bool = True    # strip tashkeel so vowelled != bare doesn't false-flag
     cluster_spans: bool = True       # merge near-duplicate spans
     cluster_max_dist: float = 0.2    # normalized edit distance threshold
     merge_contained: bool = True     # fold partial-alignment fragment spans
@@ -222,6 +223,7 @@ class ConsistencyEngine:
                     tgt_tokens, alignment, start, length,
                     normalize=True, fold_taa=cfg.fold_taa,
                     strip_clitics=cfg.strip_clitics,
+                    strip_diacritics=cfg.strip_diacritics,
                 )
                 span = info["span"]
                 if not span:

@@ -152,6 +152,10 @@ let stripClitics=true;
 $("#clitmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
   $("#clitmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); stripClitics=b.dataset.v==="on";
 }));
+let stripDiac=true;
+$("#diacmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+  $("#diacmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); stripDiac=b.dataset.v==="on";
+}));
 let clusterOn=true;
 $("#clustermode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
   $("#clustermode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); clusterOn=b.dataset.v==="on";
@@ -198,7 +202,7 @@ $("#run").addEventListener("click", ()=>{
   $("#progress").classList.remove("hidden"); $("#progbar").style.width="0%"; $("#progpct").textContent="0%";
   $("#runphase").textContent="Running…";
   $("#run").disabled=true;
-  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics,cluster_spans:clusterOn,merge_contained:containOn,min_variant_count:+$("#minvar").value,reverse:reverseOn,include_consistent:includeAll,labse_prefilter:prefilterOn,prefilter_threshold:(+$("#prefilterthr").value)/100,faithfulness_filter:faithOn,faithfulness_threshold:(+$("#faiththr").value)/100,check_termbase:checkTB,batch_size:+$("#batchsize").value,batch_num:+$("#batchnum").value});
+  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics,strip_diacritics:stripDiac,cluster_spans:clusterOn,merge_contained:containOn,min_variant_count:+$("#minvar").value,reverse:reverseOn,include_consistent:includeAll,labse_prefilter:prefilterOn,prefilter_threshold:(+$("#prefilterthr").value)/100,faithfulness_filter:faithOn,faithfulness_threshold:(+$("#faiththr").value)/100,check_termbase:checkTB,batch_size:+$("#batchsize").value,batch_num:+$("#batchnum").value});
 });
 window.addEventListener("analyze-log", e=>clog(e.detail.msg));
 window.addEventListener("analyze-progress", e=>{
