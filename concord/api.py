@@ -33,6 +33,8 @@ class ConcordAPI:
         self._embedder = None
         from .core.termbase import TermBase
         self._termbase = TermBase().load()
+        from .core.decisions import Decisions
+        self._decisions = Decisions().load()
         self._llm_cfg: Optional[llm_mod.LLMConfig] = None
         self._model_kind = "simalign"
         self._model_name = "bert"
@@ -69,6 +71,48 @@ class ConcordAPI:
                                             "trace": traceback.format_exc()[-800:]})
         threading.Thread(target=work, daemon=True).start()
         return {"started": True}
+
+    # ---- verification models (LaBSE, MT) ----
+    def _ensure_labse(self):
+        if self._embedder is None:
+            from .core import embed as emb
+            self._emit("aux-model-status", {"model": "labse", "state": "loading"})
+            self._log("Loading LaBSE (~1.8GB)…")
+            try:
+                self._embedder = emb.Embedder()
+            except Exception as e:
+                self._emit("aux-model-status",
+                           {"model": "labse", "state": "error", "error": str(e)})
+                raise
+            self._emit("aux-model-status", {"model": "labse", "state": "ready"})
+            self._log("LaBSE ready")
+        return self._embedder
+
+    def _ensure_mt(self):
+        if self._mt is None:
+            from .core import mt as mt_mod
+            self._emit("aux-model-status", {"model": "mt", "state": "loading"})
+            self._log("Loading MT model (opus-mt-ar-en, ~300MB)…")
+            try:
+                self._mt = mt_mod.Translator()
+            except Exception as e:
+                self._emit("aux-model-status",
+                           {"model": "mt", "state": "error", "error": str(e)})
+                raise
+            self._emit("aux-model-status", {"model": "mt", "state": "ready"})
+            self._log("MT model ready")
+        return self._mt
+
+    def load_labse(self) -> dict:
+        threading.Thread(target=self._ensure_labse, daemon=True).start()
+        return {"started": True}
+
+    def load_mt(self) -> dict:
+        threading.Thread(target=self._ensure_mt, daemon=True).start()
+        return {"started": True}
+
+    def models_status(self) -> dict:
+        return {"labse": self._embedder is not None, "mt": self._mt is not None}
 
     # ---- file intake ----
     def open_files(self) -> dict:
@@ -137,6 +181,7 @@ class ConcordAPI:
                     min_occurrences=int(cfg.get("min_occurrences", 2)),
                     fold_taa=bool(cfg.get("fold_taa", True)),
                     strip_clitics=bool(cfg.get("strip_clitics", True)),
+                    strip_diacritics=bool(cfg.get("strip_diacritics", True)),
                     cluster_spans=bool(cfg.get("cluster_spans", True)),
                     cluster_max_dist=float(cfg.get("cluster_max_dist", 0.2)),
                     merge_contained=bool(cfg.get("merge_contained", True)),
@@ -172,6 +217,7 @@ class ConcordAPI:
                     flags = self._labse_prefilter(
                         flags, ec.include_consistent,
                         float(cfg.get("prefilter_threshold", 0.98)))
+                flags = self._apply_decisions(flags, ec.include_consistent)
                 self._flags = flags
                 inc = sum(1 for f in flags if self._is_inconsistent(f))
                 self._log(f"Grouped {len(flags)} n-gram(s) — {inc} inconsistent")
@@ -203,12 +249,29 @@ class ConcordAPI:
 
     @staticmethod
     def _is_inconsistent(f) -> bool:
-        """A flag is inconsistent if it has >=2 spans and the LaBSE pre-filter
-        (if run) did not clear it as a near-identical duplicate. Variants that
-        merely mean similar things (valid synonyms) stay inconsistent."""
-        if f.distinct < 2:
+        """A flag is inconsistent if it has >=2 spans, the LaBSE pre-filter (if
+        run) did not clear it as a near-identical duplicate, and the reviewer
+        has not already decided it (accepted/dismissed)."""
+        if f.distinct < 2 or f.decided:
             return False
         return not (f.verify and f.verify.get("cleared"))
+
+    def _apply_decisions(self, flags, include_consistent):
+        """Suppress flags the reviewer already decided (accepted/dismissed) so
+        they never resurface. In all-n-grams mode they stay, marked as decided;
+        otherwise they are dropped from the results."""
+        kept, n = [], 0
+        for f in flags:
+            st = self._decisions.status_of(f.ngram)
+            if st:
+                f.decided = st
+                n += 1
+                if not include_consistent:
+                    continue
+            kept.append(f)
+        if n:
+            self._log(f"Suppressed {n} previously-decided flag(s)")
+        return kept
 
     def _faithfulness_filter(self, flags, include_consistent, threshold=0.6):
         """Drop variant spans that don't actually translate the source n-gram
@@ -221,10 +284,7 @@ class ConcordAPI:
                  for f in flags if f.distinct >= 2]
         if not items:
             return flags
-        if self._embedder is None:
-            self._log("Faithfulness filter: loading LaBSE (~1.8GB)…")
-            self._embedder = emb_mod.Embedder()
-            self._log("LaBSE ready")
+        self._ensure_labse()
         self._log(f"Faithfulness filter: checking {len(items)} flag(s) against "
                   f"the source term (threshold {threshold:.2f})…")
         rep = {r["ngram"]: r for r in
@@ -267,10 +327,7 @@ class ConcordAPI:
                  for f in flags if f.distinct >= 2]
         if not items:
             return flags
-        if self._embedder is None:
-            self._log("LaBSE pre-filter: loading LaBSE (~1.8GB)…")
-            self._embedder = emb_mod.Embedder()
-            self._log("LaBSE ready")
+        self._ensure_labse()
         self._log(f"LaBSE pre-filter: verifying {len(items)} flag(s) "
                   f"at identity threshold {threshold:.2f}…")
         vmap = {v["ngram"]: v
@@ -303,8 +360,10 @@ class ConcordAPI:
                 "verify": f.verify, "dropped": f.dropped,
                 "approved": f.termbase_approved,
                 "tb_violation": f.termbase_violation,
+                "decided": f.decided,
                 "variants": [{
                     "span": v.span, "count": v.count,
+                    "raw": (v.occurrences[0].raw if v.occurrences else v.span),
                     "occurrences": [{
                         "sid": o.sid, "file": o.file, "unit": o.unit,
                         "source": o.source,
@@ -335,6 +394,37 @@ class ConcordAPI:
     def _placeholder_count(self) -> int:
         from .core.xliff import placeholder_issues
         return len(placeholder_issues(self._segments))
+
+    @staticmethod
+    def _splice(target: str, lo, hi, corrected: str) -> str:
+        """Replace only the aligned token range [lo, hi] in the target with the
+        corrected term, keeping the rest of the segment intact."""
+        toks = target.split()
+        if lo is None or hi is None or lo < 0 or hi >= len(toks) or lo > hi:
+            return corrected                       # can't locate → old behavior
+        return " ".join(toks[:lo] + [corrected] + toks[hi + 1:])
+
+    def apply_correction(self, ngram: str, corrected: str) -> dict:
+        """Standardize a flagged term: splice `corrected` into every occurrence
+        at its aligned span (not replace the whole segment). Returns the new
+        target text per segment so the UI can update."""
+        corrected = (corrected or "").strip()
+        if not corrected:
+            return {"ok": False}
+        out = {}
+        for f in self._flags:
+            if f.ngram != ngram:
+                continue
+            for v in f.variants:
+                for o in v.occurrences:
+                    new_t = self._splice(o.target, o.tgt_lo, o.tgt_hi, corrected)
+                    if new_t == o.target:
+                        self._edits.pop(o.sid, None)
+                    else:
+                        self._edits[o.sid] = new_t
+                    out[o.sid] = new_t
+            break
+        return {"ok": True, "targets": out, "edits": len(self._edits)}
 
     # ---- editing ----
     def set_edit(self, sid: str, text: str) -> dict:
@@ -437,18 +527,12 @@ class ConcordAPI:
         try:
             if method == "labse":
                 from .core import embed as emb_mod
-                if self._embedder is None:
-                    self._log("Loading LaBSE embeddings (~1.8GB)…")
-                    self._embedder = emb_mod.Embedder()
-                    self._log("LaBSE ready")
+                self._ensure_labse()
                 self._log(f"Embedding {len(items)} flag(s)…")
                 verdicts = emb_mod.verify_all(self._embedder, items)
             else:
                 from .core import mt as mt_mod
-                if self._mt is None:
-                    self._log("Loading MT model (opus-mt-ar-en, ~300MB)…")
-                    self._mt = mt_mod.Translator()
-                    self._log("MT model ready")
+                self._ensure_mt()
                 n = sum(len(it["spans"]) for it in items)
                 self._log(f"Back-translating {n} span(s)…")
                 verdicts = mt_mod.verify_all(self._mt, items)
@@ -456,6 +540,22 @@ class ConcordAPI:
             return {"verdicts": verdicts, "method": method}
         except Exception as e:
             return {"error": str(e), "trace": traceback.format_exc()[-600:]}
+
+    # ---- per-flag decisions (accept / dismiss) ----
+    def decide_flag(self, ngram: str, status: str, note: str = "") -> dict:
+        """Record a reviewer verdict so this flag is not shown again."""
+        return {"ok": True, "count": self._decisions.set(ngram, status, note)}
+
+    def undecide_flag(self, key: str) -> dict:
+        return {"ok": True, "count": self._decisions.remove(key)}
+
+    def decisions_info(self) -> dict:
+        return {"count": len(self._decisions),
+                "entries": self._decisions.as_list()}
+
+    def clear_decisions(self) -> dict:
+        self._decisions.clear()
+        return {"ok": True, "count": 0}
 
     # ---- approved term base (persistent) ----
     def termbase_info(self) -> dict:

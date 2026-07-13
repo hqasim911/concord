@@ -15,13 +15,21 @@ from typing import List, Tuple
 # ---------------------------------------------------------------------------
 # Arabic normalization
 # ---------------------------------------------------------------------------
-_AR_DIACRITICS_TATWEEL = re.compile("[\u064B-\u0652\u0640]")
+_AR_TATWEEL = re.compile("\u0640")
+_AR_DIACRITICS = re.compile("[\u064B-\u0652]")
 
 
 @functools.lru_cache(maxsize=50000)
-def normalize_ar(text: str, fold_taa: bool = True) -> str:
-    """Strip tatweel + diacritics, unify alef/hamza forms; optionally taa->haa."""
-    text = _AR_DIACRITICS_TATWEEL.sub("", text)
+def normalize_ar(text: str, fold_taa: bool = True,
+                 strip_diacritics: bool = True) -> str:
+    """Strip tatweel, unify alef/hamza forms; optionally taa->haa and diacritics.
+
+    strip_diacritics: remove the tashkeel marks (fatha/damma/kasra/shadda/...)
+    so a vowelled spelling and its bare form compare equal and don't false-flag.
+    """
+    text = _AR_TATWEEL.sub("", text)
+    if strip_diacritics:
+        text = _AR_DIACRITICS.sub("", text)
     text = re.sub("[أآإ]", "ا", text)
     text = re.sub("[ؤ]", "و", text)
     text = re.sub("[ئ]", "ى", text)
@@ -187,7 +195,7 @@ def trim_span_outliers(tgt_idx, max_gap: int = _SPAN_MAX_GAP):
 def target_span(
     tgt_tokens: List[str], alignments, ng_start: int, ng_len: int,
     normalize: bool = True, fold_taa: bool = True,
-    strip_clitics: bool = True,
+    strip_clitics: bool = True, strip_diacritics: bool = True,
 ) -> str:
     """
     Given the n-gram's source token range and the alignment, return the
@@ -198,19 +206,35 @@ def target_span(
     off each word so morphological variants of the same term are compared
     as equal (see light_stem_ar).
     """
+    return aligned_span(tgt_tokens, alignments, ng_start, ng_len,
+                        normalize, fold_taa, strip_clitics,
+                        strip_diacritics)["span"]
+
+
+def aligned_span(
+    tgt_tokens: List[str], alignments, ng_start: int, ng_len: int,
+    normalize: bool = True, fold_taa: bool = True, strip_clitics: bool = True,
+    strip_diacritics: bool = True,
+) -> dict:
+    """
+    Like target_span, but returns {span, lo, hi, raw}:
+      span — the normalized comparison span (what flags are grouped by)
+      lo/hi — the target token range, so a correction can be spliced back
+              into the exact place in the segment (not replace the whole target)
+      raw — the un-normalized visible span text (readable term to insert)
+    """
     ng_src = set(range(ng_start, ng_start + ng_len))
     tgt_idx = sorted({ti for (si, ti) in alignments if si in ng_src})
     if not tgt_idx:
-        return ""
+        return {"span": "", "lo": None, "hi": None, "raw": ""}
     lo, hi = trim_span_outliers(tgt_idx)
-    span = " ".join(tgt_tokens[lo:hi + 1])
-    span = strip_edge_punct_span(span)
-    if not normalize:
-        return span
-    span = normalize_ar(span, fold_taa)
-    if strip_clitics:
-        span = " ".join(light_stem_ar(w) for w in span.split())
-    return span
+    raw = strip_edge_punct_span(" ".join(tgt_tokens[lo:hi + 1]))
+    span = raw
+    if normalize:
+        span = normalize_ar(span, fold_taa, strip_diacritics)
+        if strip_clitics:
+            span = " ".join(light_stem_ar(w) for w in span.split())
+    return {"span": span, "lo": lo, "hi": hi, "raw": raw}
 
 
 def strip_edge_punct_span(span: str) -> str:

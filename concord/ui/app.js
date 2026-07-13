@@ -24,6 +24,7 @@ function clog(msg,cls){
 
 let flags = [];
 let lastRendered = [];        // the slice currently in the DOM (post-filter/cap)
+const isInc = f => f.inconsistent && !f.decided;   // inconsistent & not decided
 let edits = new Map();        // sid -> text (mirror of backend for UI)
 let segOriginal = new Map();  // sid -> original target
 
@@ -37,6 +38,7 @@ $("#modelpick").querySelectorAll("button").forEach(b=>b.addEventListener("click"
 $("#backendpick").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
   $("#backendpick").querySelectorAll("button").forEach(x=>x.classList.remove("on"));
   b.classList.add("on"); backendChoice=b.dataset.v;
+  $("#ensmode-row").classList.toggle("hidden", backendChoice!=="ensemble");
 }));
 let ensembleMode="intersect";
 $("#ensmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
@@ -52,6 +54,23 @@ window.addEventListener("model-status", e=>{
   else if(d.state==="ready"){ txt.textContent=`Model ready: ${d.model}.`; clog(`Model ready: ${d.model}`,"em"); maybeEnableRun(); }
   else if(d.state==="error"){ txt.textContent="Model error: "+d.error; clog("Model error: "+d.error,"err"); }
 });
+
+// verification models (LaBSE / MT)
+window.addEventListener("aux-model-status", e=>{
+  const d=e.detail, lab=d.model==="labse";
+  const dot=$(lab?"#labse-dot":"#mt-dot"), txt=$(lab?"#labse-text":"#mt-text");
+  const name=lab?"LaBSE (verification)":"MT back-translation";
+  dot.className="status-dot "+(d.state==="ready"?"ready":d.state==="loading"?"loading":d.state==="error"?"error":"");
+  if(d.state==="loading"){ txt.textContent=`${name} — loading…`; clog(`Loading ${name}…`); }
+  else if(d.state==="ready"){ txt.textContent=`${name} — ready.`; clog(`${name} ready`,"em"); }
+  else if(d.state==="error"){ txt.textContent=`${name} — error: ${d.error}`; clog(`${name} error: ${d.error}`,"err"); }
+});
+$("#labse-load").addEventListener("click",()=>api().load_labse());
+$("#mt-load").addEventListener("click",()=>api().load_mt());
+function refreshModelStatus(){ if(!window.pywebview) return; api().models_status().then(s=>{
+  if(s.labse){ $("#labse-dot").className="status-dot ready"; $("#labse-text").textContent="LaBSE (verification) — ready."; }
+  if(s.mt){ $("#mt-dot").className="status-dot ready"; $("#mt-text").textContent="MT back-translation — ready."; }
+}); }
 
 // ---------- files ----------
 let fileList=[];
@@ -133,6 +152,10 @@ let stripClitics=true;
 $("#clitmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
   $("#clitmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); stripClitics=b.dataset.v==="on";
 }));
+let stripDiac=true;
+$("#diacmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+  $("#diacmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); stripDiac=b.dataset.v==="on";
+}));
 let clusterOn=true;
 $("#clustermode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
   $("#clustermode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); clusterOn=b.dataset.v==="on";
@@ -166,7 +189,7 @@ $("#tbmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()
 function refreshTB(){ if(!window.pywebview) return; api().termbase_info().then(r=>{
   const v=$("#vault-count"); if(v) v.textContent=`${r.count} approved term(s) · ~/.concord/termbase.json`;
 }); }
-window.addEventListener("pywebviewready", refreshTB);
+window.addEventListener("pywebviewready", ()=>{ refreshTB(); refreshDecCount(); refreshModelStatus(); });
 $("#minvar").addEventListener("input",e=>$("#minvarlabel").textContent=e.target.value+"×");
 $("#minocc").addEventListener("input",e=>$("#occlabel").textContent=e.target.value+"×");
 
@@ -179,7 +202,7 @@ $("#run").addEventListener("click", ()=>{
   $("#progress").classList.remove("hidden"); $("#progbar").style.width="0%"; $("#progpct").textContent="0%";
   $("#runphase").textContent="Running…";
   $("#run").disabled=true;
-  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics,cluster_spans:clusterOn,merge_contained:containOn,min_variant_count:+$("#minvar").value,reverse:reverseOn,include_consistent:includeAll,labse_prefilter:prefilterOn,prefilter_threshold:(+$("#prefilterthr").value)/100,faithfulness_filter:faithOn,faithfulness_threshold:(+$("#faiththr").value)/100,check_termbase:checkTB,batch_size:+$("#batchsize").value,batch_num:+$("#batchnum").value});
+  api().analyze({nmin:nLow,nmax:nHigh,stop_mode:swMode,min_occurrences:+$("#minocc").value,fold_taa:foldTaa,strip_clitics:stripClitics,strip_diacritics:stripDiac,cluster_spans:clusterOn,merge_contained:containOn,min_variant_count:+$("#minvar").value,reverse:reverseOn,include_consistent:includeAll,labse_prefilter:prefilterOn,prefilter_threshold:(+$("#prefilterthr").value)/100,faithfulness_filter:faithOn,faithfulness_threshold:(+$("#faiththr").value)/100,check_termbase:checkTB,batch_size:+$("#batchsize").value,batch_num:+$("#batchnum").value});
 });
 window.addEventListener("analyze-log", e=>clog(e.detail.msg));
 window.addEventListener("analyze-progress", e=>{
@@ -213,6 +236,8 @@ window.addEventListener("analyze-done", e=>{
   $("#s-tbv").textContent=flags.filter(f=>f.tb_violation).length;
   $("#runphase").textContent=`Done — ${flags.length} n-gram(s), ${d.inconsistent||0} inconsistent.`;
   $("#toolsrow").classList.remove("hidden");
+  $("#dec-panel").classList.add("hidden");
+  refreshDecCount();
   $("#llmall").classList.toggle("hidden", !$("#llm-status").dataset.ok);
   $("#auxout").innerHTML="";
   viewMode="fwd";
@@ -242,7 +267,7 @@ function render(){
   $("#filterbar").classList.remove("hidden");
   const m=buildMatcher();
   let data=flags;
-  if($("#inconly").checked) data=data.filter(f=>f.inconsistent);
+  if($("#inconly").checked) data=data.filter(isInc);
   if(m) data=data.filter(f=>m(f.ngram)||f.variants.some(v=>m(v.span)));
   const shown=data.slice(0,RENDER_CAP);
   lastRendered=shown;
@@ -272,17 +297,29 @@ function render(){
         </div>
         <div class="segs">${rows}</div></div>`;
     }).join("");
-    return `<div class="group ${f.inconsistent?'':'consistent'} ${f.tb_violation?'violation':''}">
+    const customRow=`<div class="vargroup">
+      <div class="varhead customhead">
+        <span class="vartag">Correct term</span>
+        <input class="customspan" data-g="${gi}" placeholder="type the correct translation if the spans above are wrong…" value="${f.approved?esc(f.approved):''}">
+        <button class="usecustom" data-g="${gi}">Use for all ${f.total}</button>
+        <button class="approvecustom" data-g="${gi}">Approve ✓</button>
+      </div></div>`;
+    const dec = f.decided
+      ? `<span class="decided-tag">decided: ${esc(f.decided)}</span><button class="undobtn" data-g="${gi}">Undo</button>`
+      : (f.inconsistent
+          ? `<button class="whybtn" data-g="${gi}">why flagged?</button><button class="decbtn accept" data-g="${gi}">Accept variance</button><button class="decbtn dismiss" data-g="${gi}">Dismiss</button>`
+          : "");
+    return `<div class="group ${f.inconsistent?'':'consistent'} ${f.tb_violation?'violation':''} ${f.decided?'decided':''}">
       <div class="group-head" data-g="${gi}">
         <span class="chev">▸</span><span class="badge">${f.tb_violation?'vault':f.distinct+' span'+(f.distinct>1?'s':'')}</span>
         <span class="src">${hl(f.ngram,q)}</span>
         <span class="meta">${f.total} occ${f.inconsistent?` · ${Math.round((f.score||0)*100)}% split`:' · consistent'}${f.verify?` · LaBSE ${esc(f.verify.verdict)}${f.verify.agreement!=null?` (${f.verify.agreement})`:''}`:''}</span>
-        ${f.inconsistent?`<button class="whybtn" data-g="${gi}">why flagged?</button>`:''}
+        ${dec}
         <button class="llmbtn ${$("#llm-status").dataset.ok?'':'hidden'}" data-g="${gi}">LLM check</button>
       </div>
       ${f.approved?`<div class="tbnote ${f.tb_violation?'bad':''}">${f.tb_violation?'⚠ Vault violation — ':'✓ Matches vault — '}approved: <span dir="rtl">${esc(f.approved)}</span>${f.tb_violation?` · this file uses ${f.variants.filter(v=>v.span!==f.approved).map(v=>`<span dir="rtl">${esc(v.span)}</span>`).join(", ")}`:''}</div>`:''}
       ${f.dropped&&f.dropped.length?`<div class="dropnote">Dropped ${f.dropped.length} mis-aligned span(s) — not a translation of the term: ${f.dropped.map(d=>`<span dir="rtl">${esc(d.span)}</span> (sim ${d.sim})`).join(", ")}</div>`:''}
-      <div class="variants hidden">${vars}</div>
+      <div class="variants hidden">${customRow}${vars}</div>
       <div class="whyout hidden" data-g="${gi}"></div>
       <div class="mtout hidden" data-g="${gi}"></div>
       <div class="llmout hidden" data-g="${gi}"></div>
@@ -291,9 +328,15 @@ function render(){
   bind(host,shown);
 }
 function bind(host,data){
+  host.querySelectorAll(".decbtn").forEach(b=>b.addEventListener("click",e=>{
+    e.stopPropagation(); decide(data[+b.dataset.g], b.classList.contains("accept")?"accepted":"dismissed");
+  }));
+  host.querySelectorAll(".undobtn").forEach(b=>b.addEventListener("click",e=>{
+    e.stopPropagation(); undecide(data[+b.dataset.g]);
+  }));
   host.querySelectorAll(".group-head").forEach(h=>h.addEventListener("click",ev=>{
-    if(ev.target.classList.contains("llmbtn")||ev.target.classList.contains("whybtn")) return;
-    const panel=h.nextElementSibling, open=panel.classList.toggle("hidden");
+    if(["llmbtn","whybtn","decbtn","accept","dismiss","undobtn"].some(c=>ev.target.classList.contains(c))) return;
+    const panel=h.closest(".group").querySelector(".variants"), open=panel.classList.toggle("hidden");
     h.querySelector(".chev").textContent=open?"▸":"▾";
     if(!open) panel.querySelectorAll("textarea.seg-tgt").forEach(grow);
   }));
@@ -316,16 +359,9 @@ function bind(host,data){
     const ta=b.closest(".seg").querySelector("textarea"); ta.value=orig;
     b.closest(".seg").classList.remove("changed"); grow(ta); refreshDirty();
   }));
-  host.querySelectorAll(".usebtn").forEach(btn=>btn.addEventListener("click",e=>{
-    e.stopPropagation(); const f=data[+btn.dataset.g], v=f.variants[+btn.dataset.v], text=v.span;
-    const group=btn.closest(".group");
-    f.variants.forEach(vv=>vv.occurrences.forEach(o=>{
-      if(text===segOriginal.get(o.sid)) edits.delete(o.sid); else edits.set(o.sid,text);
-      api().set_edit(o.sid,text);
-      const ta=group.querySelector(`textarea.seg-tgt[data-sid="${cssEsc(o.sid)}"]`);
-      if(ta){ta.value=text; ta.closest(".seg").classList.toggle("changed",edits.has(o.sid)); grow(ta);}
-    }));
-    refreshDirty();
+  host.querySelectorAll(".usebtn").forEach(btn=>btn.addEventListener("click",async e=>{
+    e.stopPropagation(); const f=data[+btn.dataset.g], v=f.variants[+btn.dataset.v];
+    await applyCorrection(f, btn.closest(".group"), v.raw||v.span);
   }));
   host.querySelectorAll(".approvebtn").forEach(btn=>btn.addEventListener("click",e=>{
     e.stopPropagation();
@@ -334,6 +370,24 @@ function bind(host,data){
     f.approved=v.span;
     btn.closest(".variants").querySelectorAll(".approvebtn").forEach(b=>{b.classList.remove("done");b.textContent="Approve ✓";});
     btn.classList.add("done"); btn.textContent="Approved ✓";
+  }));
+  host.querySelectorAll(".approvecustom").forEach(btn=>btn.addEventListener("click",e=>{
+    e.stopPropagation();
+    const f=data[+btn.dataset.g];
+    const inp=btn.closest(".varhead").querySelector(".customspan");
+    const val=inp.value.trim(); if(!val){ inp.focus(); return; }
+    api().approve_term(f.ngram, val).then(()=>refreshTB());
+    f.approved=val; btn.classList.add("done"); btn.textContent="Approved ✓";
+  }));
+  host.querySelectorAll(".usecustom").forEach(btn=>btn.addEventListener("click",async e=>{
+    e.stopPropagation();
+    const f=data[+btn.dataset.g];
+    const inp=btn.closest(".varhead").querySelector(".customspan");
+    const text=inp.value.trim(); if(!text){ inp.focus(); return; }
+    await applyCorrection(f, btn.closest(".group"), text);
+  }));
+  host.querySelectorAll(".customspan").forEach(inp=>inp.addEventListener("keydown",e=>{
+    if(e.key==="Enter"){ e.preventDefault(); inp.closest(".varhead").querySelector(".approvecustom").click(); }
   }));
   host.querySelectorAll(".llmbtn").forEach(btn=>btn.addEventListener("click",async e=>{
     e.stopPropagation(); const f=data[+btn.dataset.g];
@@ -346,6 +400,17 @@ function bind(host,data){
   }));
 }
 function grow(ta){ta.style.height="auto";ta.style.height=ta.scrollHeight+"px";}
+async function applyCorrection(f, group, corrected){
+  const r=await api().apply_correction(f.ngram, corrected);
+  const t=(r&&r.targets)||{};
+  Object.keys(t).forEach(sid=>{
+    const val=t[sid];
+    if(val===segOriginal.get(sid)) edits.delete(sid); else edits.set(sid,val);
+    const ta=group.querySelector(`textarea.seg-tgt[data-sid="${cssEsc(sid)}"]`);
+    if(ta){ ta.value=val; ta.closest(".seg").classList.toggle("changed",edits.has(sid)); grow(ta); }
+  });
+  refreshDirty();
+}
 
 // ---------- expand/collapse all ----------
 const toggleAll=$("#toggleall");
@@ -438,6 +503,33 @@ $("#ph-k").addEventListener("click", async ()=>{
   out.innerHTML=`<div class="group"><div class="group-head"><span class="badge">${r.count}</span><span class="src">Placeholder mismatches (source vs target)</span></div><div class="variants">`+
     r.items.map(s=>`<div class="seg"><div class="seg-src">${esc(s.source)}</div><div dir="rtl" style="margin-top:4px">${esc(s.target)}</div><div class="seg-meta"><span>src: ${esc((s.src_ph||[]).join(", ")||"—")} · tgt: ${esc((s.tgt_ph||[]).join(", ")||"—")}</span></div></div>`).join("")+
     `</div></div>`;
+});
+
+// ---------- per-flag decisions (accept / dismiss) ----------
+async function decide(f, status){ await api().decide_flag(f.ngram, status); f.decided=status; postDecide(); }
+async function undecide(f){ await api().undecide_flag(f.ngram); f.decided=null; postDecide(); }
+function postDecide(){
+  render(); syncToggle();
+  const el=$("#s-flag"); if(el) el.textContent=flags.filter(isInc).length;
+  refreshDecCount();
+}
+function refreshDecCount(){ if(!window.pywebview) return; api().decisions_info().then(r=>{ const b=$("#decpanelbtn"); if(b) b.textContent=`Decisions (${r.count})`; }); }
+$("#decpanelbtn").addEventListener("click", async ()=>{ const open=!$("#dec-panel").classList.toggle("hidden"); if(open) renderDecPanel(); });
+async function renderDecPanel(){
+  const r=await api().decisions_info(); $("#dec-count").textContent=`· ${r.count}`;
+  const box=$("#dec-list");
+  if(!r.count){ box.innerHTML=`<div class="hint">No suppressed decisions. Accept/Dismiss a flag to silence it here.</div>`; return; }
+  box.innerHTML=r.entries.map(e=>`<div class="binrow" data-k="${esc(e.key)}"><span class="bsrc">${esc(e.ngram)}</span><span class="vmeta">${esc(e.status)}</span><button class="va restore">restore</button></div>`).join("");
+  box.querySelectorAll(".binrow").forEach(row=>row.querySelector(".restore").addEventListener("click",async()=>{
+    await api().undecide_flag(row.dataset.k); refreshDecCount(); renderDecPanel();
+    const f=flags.find(x=>jsKey(x.ngram)===row.dataset.k);
+    if(f){ f.decided=null; render(); const el=$("#s-flag"); if(el) el.textContent=flags.filter(isInc).length; }
+  }));
+}
+$("#dec-clear").addEventListener("click", async ()=>{
+  const r0=await api().decisions_info(); if(!r0.count) return;
+  if(!confirm(`Clear all ${r0.count} suppressed decision(s)? They will be reviewed again next analysis.`)) return;
+  await api().clear_decisions(); refreshDecCount(); renderDecPanel();
 });
 
 // ---------- approved term base ----------

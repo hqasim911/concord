@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Callable, Optional
 
 from .textutil import (
-    tokenize, ngrams_with_positions, target_span, norm_edit_distance,
+    tokenize, ngrams_with_positions, aligned_span, norm_edit_distance,
     DEFAULT_STOPWORDS,
 )
 from .aligner import Aligner
@@ -32,6 +32,9 @@ class SpanOccurrence:
     source: str
     target: str          # full original target (for the editor)
     span: str            # normalized aligned span translating the n-gram
+    tgt_lo: Optional[int] = None   # target token range of the span (for splice)
+    tgt_hi: Optional[int] = None
+    raw: str = ""                  # un-normalized visible span text
 
 
 @dataclass
@@ -53,6 +56,7 @@ class Flag:
     dropped: Optional[list] = None    # variants removed as mis-aligned
     termbase_approved: Optional[str] = None   # approved translation, if any
     termbase_violation: bool = False          # deviates from the approved term
+    decided: Optional[str] = None             # reviewer verdict: accepted|dismissed
 
     @property
     def distinct(self):
@@ -97,6 +101,7 @@ class EngineConfig:
     min_occurrences: int = 2
     fold_taa: bool = True
     strip_clitics: bool = True       # fold الـ / clitics off target terms
+    strip_diacritics: bool = True    # strip tashkeel so vowelled != bare doesn't false-flag
     cluster_spans: bool = True       # merge near-duplicate spans
     cluster_max_dist: float = 0.2    # normalized edit distance threshold
     merge_contained: bool = True     # fold partial-alignment fragment spans
@@ -214,17 +219,20 @@ class ConsistencyEngine:
                 seen_in_seg.add(key)
                 display.setdefault(key, disp)
 
-                span = target_span(
+                info = aligned_span(
                     tgt_tokens, alignment, start, length,
                     normalize=True, fold_taa=cfg.fold_taa,
                     strip_clitics=cfg.strip_clitics,
+                    strip_diacritics=cfg.strip_diacritics,
                 )
+                span = info["span"]
                 if not span:
                     continue
 
                 occ = SpanOccurrence(
                     sid=seg.sid, file=seg.file, unit=seg.unit,
                     source=seg.source, target=seg.target, span=span,
+                    tgt_lo=info["lo"], tgt_hi=info["hi"], raw=info["raw"],
                 )
                 gv = groups.setdefault(key, {})
                 gv.setdefault(span, Variant(span=span)).occurrences.append(occ)

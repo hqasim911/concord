@@ -123,6 +123,29 @@
 
   .llmout{padding:8px 18px 12px 26px;font-size:13px;color:var(--jade-deep);background:#fbfaf5}
   .llmout.bad{color:var(--rust)}
+
+  /* custom "correct term" row */
+  .customhead{background:#f3f8f4}
+  .customspan{flex:1;padding:7px 10px;border:1px solid var(--line);border-radius:6px;
+    font-family:inherit;font-size:15px;direction:rtl;text-align:right;background:#fff;color:var(--ink)}
+  .customspan:focus{outline:2px solid var(--jade);border-color:var(--jade)}
+  .usecustom,.approvecustom{border:1px solid var(--jade-deep);background:transparent;color:var(--jade-deep);
+    font-family:inherit;font-size:12px;padding:5px 11px;border-radius:5px;cursor:pointer;flex:none}
+  .usecustom{border-color:var(--jade);color:var(--jade-deep)}
+  .usecustom:hover{background:var(--jade);color:#fff}
+  .approvecustom:hover,.approvecustom.done{background:var(--jade-deep);color:#fff}
+
+  /* per-flag decisions */
+  .decbtn{border:1px solid var(--line);background:transparent;color:var(--mut);font-family:inherit;
+    font-size:12px;padding:5px 11px;border-radius:5px;cursor:pointer;margin-left:6px}
+  .decbtn.accept:hover{background:var(--jade);color:#fff;border-color:var(--jade)}
+  .decbtn.dismiss:hover{background:var(--rust);color:#fff;border-color:var(--rust)}
+  .undobtn{border:1px solid var(--jade);background:transparent;color:var(--jade-deep);
+    font-family:inherit;font-size:12px;padding:5px 11px;border-radius:5px;cursor:pointer;margin-left:6px}
+  .undobtn:hover{background:var(--jade);color:#fff}
+  .group.decided{opacity:.5}
+  .group.decided .group-head{border-left-color:var(--mut)!important}
+  .decided-tag{font-family:ui-monospace,monospace;font-size:11px;color:var(--mut);margin-left:6px}
   .mtout{padding:8px 18px 12px 26px;font-size:13px;color:var(--jade-deep);background:#f2f7f3;border-top:1px solid var(--line)}
   .mtout.bad{color:var(--rust)}
   .mtout .bt{font-family:ui-monospace,monospace;font-size:12px;color:var(--mut);margin-top:4px}
@@ -355,6 +378,8 @@
           <div><div class="switch" id="taamode"><button data-v="on" class="on">Fold ة→ه</button><button data-v="off">Keep</button></div></div>
           <label>Article / clitic folding <span class="help" data-tip="Strip the definite article الـ and attached clitics (وال، بال، لل…) so الزر and زر count as the same term.">?</span></label>
           <div><div class="switch" id="clitmode"><button data-v="on" class="on">Strip الـ</button><button data-v="off">Keep</button></div></div>
+          <label>Diacritics <span class="help" data-tip="Strip Arabic tashkeel (fatḥa/ḍamma/kasra/shadda/…) so a vowelled spelling and its bare form aren't treated as different translations.">?</span></label>
+          <div><div class="switch" id="diacmode"><button data-v="on" class="on">Strip</button><button data-v="off">Keep</button></div></div>
         </div>
 
         <h4 class="mgroup">Grouping &amp; noise reduction</h4>
@@ -398,23 +423,39 @@
             <button class="btn" id="loadmodel">Load model</button>
           </div>
           <div class="formgrid" style="margin-top:14px">
-            <label>Backend</label>
+            <label>Backend <span class="help" data-tip="How words are aligned. SimAlign & awesome-align are comparable alone; Ensemble uses both and keeps only links they agree on (higher precision) — but loads two models.">?</span></label>
             <div class="switch" id="backendpick">
               <button data-v="simalign" class="on">SimAlign</button>
               <button data-v="awesome">awesome-align</button>
               <button data-v="ensemble">Ensemble</button>
             </div>
-            <label>Base model</label>
+            <label>Base model <span class="help" data-tip="The multilingual model behind the aligner. mBERT is smaller/faster (~700MB); XLM-R is larger and often sharper on Arabic. Downloaded on first load.">?</span></label>
             <div class="switch" id="modelpick">
               <button data-v="bert" class="on">mBERT (faster)</button>
               <button data-v="xlmr">XLM-R (accuracy)</button>
             </div>
-            <label>Ensemble mode</label>
+          </div>
+          <div class="formgrid hidden" id="ensmode-row" style="margin-top:12px">
+            <label>Ensemble mode <span class="help" data-tip="Intersect keeps only links both aligners agree on (precise); Union keeps links from either (higher recall — fuller spans, fewer truncations).">?</span></label>
             <div class="switch" id="ensmode">
               <button data-v="intersect" class="on">Intersect (precise)</button>
               <button data-v="union">Union (recall)</button>
             </div>
           </div>
+
+          <div class="modelbar" style="margin-top:14px">
+            <span class="status-dot" id="labse-dot"></span>
+            <span id="labse-text" style="flex:1">LaBSE (verification) — not loaded.</span>
+            <span class="help" data-tip="Multilingual sentence embeddings (~1.8GB) used by the LaBSE pre-filter, faithfulness filter, and the Verify-all tool. Loads on first use — preload here to avoid a mid-analysis download.">?</span>
+            <button class="btn ghost" id="labse-load">Load now</button>
+          </div>
+          <div class="modelbar" style="margin-top:8px">
+            <span class="status-dot" id="mt-dot"></span>
+            <span id="mt-text" style="flex:1">MT back-translation — not loaded.</span>
+            <span class="help" data-tip="Local Marian ar→en model (~300MB) for the optional back-translation verifier. Loads on first use.">?</span>
+            <button class="btn ghost" id="mt-load">Load now</button>
+          </div>
+
           <div class="llmsub">
             <h4>LLM — optional, for semantic verdicts</h4>
             <div class="body">
@@ -527,11 +568,18 @@
       <div class="switch" id="viewmode"><button data-v="fwd" class="on">Forward EN→AR</button><button data-v="rev">Reverse AR→EN</button></div>
       <button class="btn ghost" id="loadgloss">Load glossary…</button>
       <button class="btn ghost" id="checkgloss">Check adherence</button>
-      <button class="btn ghost" id="approveall">Approve all → term base</button>
+      <button class="btn ghost" id="approveall">Approve all → vault</button>
+      <button class="btn ghost" id="decpanelbtn">Decisions (0)</button>
       <div class="switch" id="verifier"><button data-v="labse" class="on">LaBSE</button><button data-v="mt">Back-translation</button></div>
       <button class="btn ghost" id="mtall">Verify all</button>
       <button class="btn ghost hidden" id="llmall">LLM-check all</button>
       <span class="hint" id="toolshint"></span>
+    </div>
+    <div class="card hidden" id="dec-panel" style="margin:0 0 14px">
+      <div class="row"><h3 style="margin:0">Suppressed decisions <span class="hint" id="dec-count"></span></h3>
+        <button class="btn ghost" id="dec-clear" style="margin-left:auto">Clear all</button>
+      </div>
+      <div id="dec-list" style="margin-top:12px"></div>
     </div>
     <div id="auxout"></div>
 
