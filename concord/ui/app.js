@@ -47,11 +47,19 @@ $("#ensmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",(
 }));
 $("#loadmodel").addEventListener("click", ()=>api().load_model(backendChoice, modelChoice, ensembleMode));
 
+const BACKEND_NAMES={simalign:"SimAlign",awesome:"awesome-align",ensemble:"Ensemble"};
+const BASE_NAMES={bert:"mBERT",xlmr:"XLM-R"};
+function modelLabel(d){
+  const backend=BACKEND_NAMES[d.kind]||d.kind||"", base=BASE_NAMES[d.model]||d.model||"";
+  let s=backend?`${backend} · ${base}`:base;
+  if(d.kind==="ensemble"&&d.mode) s+=` (${d.mode})`;
+  return s;
+}
 window.addEventListener("model-status", e=>{
-  const d=e.detail, dot=$("#mdot"), txt=$("#mtext");
+  const d=e.detail, dot=$("#mdot"), txt=$("#mtext"), lbl=modelLabel(d);
   dot.className="status-dot "+(d.state==="ready"?"ready":d.state==="loading"?"loading":d.state==="error"?"error":"");
-  if(d.state==="loading"){ txt.textContent=`Loading ${d.model} model (first run downloads it)…`; clog(`Loading ${d.model} model…`); }
-  else if(d.state==="ready"){ txt.textContent=`Model ready: ${d.model}.`; clog(`Model ready: ${d.model}`,"em"); maybeEnableRun(); }
+  if(d.state==="loading"){ txt.textContent=`Loading ${lbl} (first run downloads it)…`; clog(`Loading ${lbl}…`); }
+  else if(d.state==="ready"){ txt.textContent=`Model ready: ${lbl}.`; clog(`Model ready: ${lbl}`,"em"); maybeEnableRun(); }
   else if(d.state==="error"){ txt.textContent="Model error: "+d.error; clog("Model error: "+d.error,"err"); }
 });
 

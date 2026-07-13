@@ -62,12 +62,15 @@ class ConcordAPI:
         """Load the alignment model (downloads on first run). Runs in a thread."""
         def work():
             try:
-                self._emit("model-status", {"state": "loading", "model": model})
+                self._emit("model-status", {"state": "loading", "kind": kind,
+                                            "model": model, "mode": mode})
                 self._aligner = build_aligner(kind, model=model, mode=mode)
                 self._model_kind, self._model_name = kind, model
-                self._emit("model-status", {"state": "ready", "model": model})
+                self._emit("model-status", {"state": "ready", "kind": kind,
+                                            "model": model, "mode": mode})
             except Exception as e:
                 self._emit("model-status", {"state": "error", "error": str(e),
+                                            "kind": kind, "model": model,
                                             "trace": traceback.format_exc()[-800:]})
         threading.Thread(target=work, daemon=True).start()
         return {"started": True}
