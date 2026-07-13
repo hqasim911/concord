@@ -2,6 +2,28 @@
 const $ = s => document.querySelector(s);
 const api = () => window.pywebview.api;
 
+// A segmented toggle: exactly one button carries `.on`; clicking picks it and
+// invokes onPick(value, button). Replaces the repeated remove-all/add-one dance.
+function bindSwitch(id, onPick){
+  const box = $("#"+id);
+  box.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+    box.querySelectorAll("button").forEach(x=>x.classList.remove("on"));
+    b.classList.add("on"); onPick(b.dataset.v, b);
+  }));
+}
+// A text-filter matcher over an input + optional regex checkbox. Returns a
+// predicate (or null when the box is empty), toggling `.rxbad` on bad regex.
+function makeMatcher(inputSel, rxSel){
+  const el = $(inputSel), raw = el.value.trim();
+  if(!raw){ el.classList.remove("rxbad"); return null; }
+  if($(rxSel).checked){
+    try{ const re=new RegExp(raw,"i"); el.classList.remove("rxbad"); return s=>re.test(String(s)); }
+    catch(err){ el.classList.add("rxbad"); return null; }
+  }
+  el.classList.remove("rxbad");
+  const low=raw.toLowerCase(); return s=>String(s).toLowerCase().includes(low);
+}
+
 // ---------- page navigation ----------
 function showPage(p){
   document.querySelectorAll(".page").forEach(el=>el.classList.add("hidden"));
@@ -31,20 +53,13 @@ let segOriginal = new Map();  // sid -> original target
 // ---------- model ----------
 let modelChoice = "bert";
 let backendChoice = "simalign";
-$("#modelpick").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
-  $("#modelpick").querySelectorAll("button").forEach(x=>x.classList.remove("on"));
-  b.classList.add("on"); modelChoice=b.dataset.v;
-}));
-$("#backendpick").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
-  $("#backendpick").querySelectorAll("button").forEach(x=>x.classList.remove("on"));
-  b.classList.add("on"); backendChoice=b.dataset.v;
-  $("#ensmode-row").classList.toggle("hidden", backendChoice!=="ensemble");
-}));
-let ensembleMode="intersect";
-$("#ensmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
-  $("#ensmode").querySelectorAll("button").forEach(x=>x.classList.remove("on"));
-  b.classList.add("on"); ensembleMode=b.dataset.v;
-}));
+let ensembleMode = "intersect";
+bindSwitch("modelpick", v=>modelChoice=v);
+bindSwitch("backendpick", v=>{
+  backendChoice=v;
+  $("#ensmode-row").classList.toggle("hidden", v!=="ensemble");
+});
+bindSwitch("ensmode", v=>ensembleMode=v);
 $("#loadmodel").addEventListener("click", ()=>api().load_model(backendChoice, modelChoice, ensembleMode));
 
 const BACKEND_NAMES={simalign:"SimAlign",awesome:"awesome-align",ensemble:"Ensemble"};
@@ -144,56 +159,20 @@ nchips.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
   else { if(n<=nLow)nLow=n; else if(n>=nHigh)nHigh=n; else (n-nLow<=nHigh-n)?nLow=n:nHigh=n; }
   paintChips();
 }));
-$("#nmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
-  $("#nmode").querySelectorAll("button").forEach(x=>x.classList.remove("on"));
-  b.classList.add("on"); nMode=b.dataset.v; if(nMode==="exact")nHigh=nLow; paintChips();
-}));
-let swMode="trim";
-$("#swmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
-  $("#swmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); swMode=b.dataset.v;
-}));
-let foldTaa=true;
-$("#taamode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
-  $("#taamode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); foldTaa=b.dataset.v==="on";
-}));
-let stripClitics=true;
-$("#clitmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
-  $("#clitmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); stripClitics=b.dataset.v==="on";
-}));
-let stripDiac=true;
-$("#diacmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
-  $("#diacmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); stripDiac=b.dataset.v==="on";
-}));
-let clusterOn=true;
-$("#clustermode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
-  $("#clustermode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); clusterOn=b.dataset.v==="on";
-}));
-let containOn=true;
-$("#containmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
-  $("#containmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); containOn=b.dataset.v==="on";
-}));
-let reverseOn=false;
-$("#revmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
-  $("#revmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); reverseOn=b.dataset.v==="on";
-}));
-let includeAll=true;
-$("#incmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
-  $("#incmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); includeAll=b.dataset.v==="all";
-}));
-let prefilterOn=false;
-$("#prefiltermode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
-  $("#prefiltermode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); prefilterOn=b.dataset.v==="on";
-}));
+bindSwitch("nmode", v=>{ nMode=v; if(nMode==="exact")nHigh=nLow; paintChips(); });
+let swMode="trim";        bindSwitch("swmode", v=>swMode=v);
+let foldTaa=true;         bindSwitch("taamode", v=>foldTaa=v==="on");
+let stripClitics=true;    bindSwitch("clitmode", v=>stripClitics=v==="on");
+let stripDiac=true;       bindSwitch("diacmode", v=>stripDiac=v==="on");
+let clusterOn=true;       bindSwitch("clustermode", v=>clusterOn=v==="on");
+let containOn=true;       bindSwitch("containmode", v=>containOn=v==="on");
+let reverseOn=false;      bindSwitch("revmode", v=>reverseOn=v==="on");
+let includeAll=true;      bindSwitch("incmode", v=>includeAll=v==="all");
+let prefilterOn=false;    bindSwitch("prefiltermode", v=>prefilterOn=v==="on");
 $("#prefilterthr").addEventListener("input",e=>$("#thrlabel").textContent=e.target.value+"%");
-let faithOn=false;
-$("#faithmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
-  $("#faithmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); faithOn=b.dataset.v==="on";
-}));
+let faithOn=false;        bindSwitch("faithmode", v=>faithOn=v==="on");
 $("#faiththr").addEventListener("input",e=>$("#faithlabel").textContent=e.target.value+"%");
-let checkTB=false;
-$("#tbmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
-  $("#tbmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); checkTB=b.dataset.v==="on";
-}));
+let checkTB=false;        bindSwitch("tbmode", v=>checkTB=v==="on");
 function refreshTB(){ if(!window.pywebview) return; api().termbase_info().then(r=>{
   const v=$("#vault-count"); if(v) v.textContent=`${r.count} approved term(s) · ~/.concord/termbase.json`;
 }); }
@@ -258,22 +237,12 @@ const filterInput=$("#filter");
 filterInput.addEventListener("input",()=>{render();syncToggle();});
 $("#rx").addEventListener("change",()=>{render();syncToggle();});
 $("#inconly").addEventListener("change",()=>{render();syncToggle();});
-function buildMatcher(){
-  const raw=filterInput.value.trim();
-  if(!raw){ filterInput.classList.remove("rxbad"); return null; }
-  if($("#rx").checked){
-    try{ const re=new RegExp(raw,"i"); filterInput.classList.remove("rxbad"); return s=>re.test(String(s)); }
-    catch(err){ filterInput.classList.add("rxbad"); return null; }
-  }
-  filterInput.classList.remove("rxbad");
-  const low=raw.toLowerCase(); return s=>String(s).toLowerCase().includes(low);
-}
 const RENDER_CAP=400;
 function render(){
   const host=$("#results");
   if(!flags.length){ $("#filterbar").classList.add("hidden"); host.innerHTML=`<div class="empty"><div class="big">✓</div><strong>No n-grams found</strong><div style="margin-top:6px">Nothing matched these settings.</div></div>`; $("#showing").textContent=""; return; }
   $("#filterbar").classList.remove("hidden");
-  const m=buildMatcher();
+  const m=makeMatcher("#filter","#rx");
   let data=flags;
   if($("#inconly").checked) data=data.filter(isInc);
   if(m) data=data.filter(f=>m(f.ngram)||f.variants.some(v=>m(v.span)));
@@ -469,11 +438,10 @@ $("#llm-test").addEventListener("click", async ()=>{
 
 // ---------- view switch: forward / reverse ----------
 let viewMode="fwd";
-$("#viewmode").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
-  $("#viewmode").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on");
-  viewMode=b.dataset.v;
+bindSwitch("viewmode", v=>{
+  viewMode=v;
   if(viewMode==="rev") renderReverse(); else { render(); syncToggle(); }
-}));
+});
 function renderReverse(){
   const host=$("#results"); $("#filterbar").classList.add("hidden");
   if(!reverseFlags.length){ host.innerHTML=`<div class="empty"><div class="big">✓</div><strong>No overloaded spans</strong><div style="margin-top:6px">No Arabic span translates more than one English term.<br>(Enable "+ AR→EN" before analyzing to compute this.)</div></div>`; return; }
@@ -552,6 +520,8 @@ $("#approveall").addEventListener("click", async ()=>{
 });
 // ---------- N-gram Vault page ----------
 let vaultEntries=[], vaultTrash=[], vaultSel=new Set();
+// MUST mirror Python core.textutil.normalize_key — decision/vault keys are
+// matched across the JS↔Python bridge, so the two must agree exactly.
 function jsKey(s){ return s.toLowerCase().replace(/\s+/g," ").trim(); }
 function wc(s){ return s.trim().split(/\s+/).filter(Boolean).length; }
 async function renderVault(){
@@ -560,16 +530,6 @@ async function renderVault(){
   vaultSel=new Set([...vaultSel].filter(k=>vaultEntries.some(e=>e.key===k)));
   refreshTB(); updateBinBtn(); paintVault();
   if(!$("#vault-bin").classList.contains("hidden")) paintBin();
-}
-function vaultMatcher(){
-  const raw=$("#vault-search").value.trim(), el=$("#vault-search");
-  if(!raw){ el.classList.remove("rxbad"); return null; }
-  if($("#vault-rx").checked){
-    try{ const re=new RegExp(raw,"i"); el.classList.remove("rxbad"); return s=>re.test(String(s)); }
-    catch(e){ el.classList.add("rxbad"); return null; }
-  }
-  el.classList.remove("rxbad");
-  const low=raw.toLowerCase(); return s=>String(s).toLowerCase().includes(low);
 }
 function sortEntries(arr){
   const by=$("#vault-sort").value, a=[...arr];
@@ -586,7 +546,7 @@ function sortEntries(arr){
 }
 function updateSelCount(){ $("#vault-selcount").textContent=vaultSel.size?`${vaultSel.size} selected`:""; }
 function paintVault(){
-  const box=$("#vault-list"), m=vaultMatcher(), scope=$("#vault-scope").value, lenf=$("#vault-len").value;
+  const box=$("#vault-list"), m=makeMatcher("#vault-search","#vault-rx"), scope=$("#vault-scope").value, lenf=$("#vault-len").value;
   if(!vaultEntries.length){ $("#vault-shown").textContent=""; updateSelCount(); box.innerHTML=`<div class="empty"><div class="big">🗄</div><strong>Vault is empty</strong><div style="margin-top:6px">Approve terms from the results page, or add them above.</div></div>`; return; }
   let data=vaultEntries;
   if(lenf!=="any"){ const n=+lenf; data=data.filter(e=> lenf==="6" ? wc(e.source)>=6 : wc(e.source)===n); }
@@ -683,9 +643,7 @@ $("#bin-empty").addEventListener("click",async()=>{
 
 // ---------- local verifier: back-translation | LaBSE ----------
 let verifierChoice="labse";
-$("#verifier").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
-  $("#verifier").querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); verifierChoice=b.dataset.v;
-}));
+bindSwitch("verifier", v=>verifierChoice=v);
 $("#mtall").addEventListener("click", async ()=>{
   const label=verifierChoice==="labse"?"LaBSE":"Back-translation";
   $("#mtall").disabled=true;

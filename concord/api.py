@@ -38,6 +38,10 @@ class ConcordAPI:
         self._llm_cfg: Optional[llm_mod.LLMConfig] = None
         self._model_kind = "simalign"
         self._model_name = "bert"
+        # normalization used by the last analysis, so glossary adherence
+        # compares under the same rules the engine did (defaults = engine's)
+        self._norm = {"fold_taa": True, "strip_clitics": True,
+                      "strip_diacritics": True}
 
     def set_window(self, window):
         self._window = window
@@ -76,35 +80,36 @@ class ConcordAPI:
         return {"started": True}
 
     # ---- verification models (LaBSE, MT) ----
-    def _ensure_labse(self):
-        if self._embedder is None:
-            from .core import embed as emb
-            self._emit("aux-model-status", {"model": "labse", "state": "loading"})
-            self._log("Loading LaBSE (~1.8GB)…")
+    def _ensure_aux(self, key: str, attr: str, factory,
+                    load_msg: str, ready_msg: str):
+        """Lazily construct an auxiliary model (LaBSE / MT), caching it on
+        `attr` and reporting load/ready/error through the aux-model-status
+        bridge. Returns the (cached) model instance."""
+        model = getattr(self, attr)
+        if model is None:
+            self._emit("aux-model-status", {"model": key, "state": "loading"})
+            self._log(load_msg)
             try:
-                self._embedder = emb.Embedder()
+                model = factory()
             except Exception as e:
                 self._emit("aux-model-status",
-                           {"model": "labse", "state": "error", "error": str(e)})
+                           {"model": key, "state": "error", "error": str(e)})
                 raise
-            self._emit("aux-model-status", {"model": "labse", "state": "ready"})
-            self._log("LaBSE ready")
-        return self._embedder
+            setattr(self, attr, model)
+            self._emit("aux-model-status", {"model": key, "state": "ready"})
+            self._log(ready_msg)
+        return model
+
+    def _ensure_labse(self):
+        from .core import embed as emb
+        return self._ensure_aux("labse", "_embedder", emb.Embedder,
+                                "Loading LaBSE (~1.8GB)…", "LaBSE ready")
 
     def _ensure_mt(self):
-        if self._mt is None:
-            from .core import mt as mt_mod
-            self._emit("aux-model-status", {"model": "mt", "state": "loading"})
-            self._log("Loading MT model (opus-mt-ar-en, ~300MB)…")
-            try:
-                self._mt = mt_mod.Translator()
-            except Exception as e:
-                self._emit("aux-model-status",
-                           {"model": "mt", "state": "error", "error": str(e)})
-                raise
-            self._emit("aux-model-status", {"model": "mt", "state": "ready"})
-            self._log("MT model ready")
-        return self._mt
+        from .core import mt as mt_mod
+        return self._ensure_aux("mt", "_mt", mt_mod.Translator,
+                                "Loading MT model (opus-mt-ar-en, ~300MB)…",
+                                "MT model ready")
 
     def load_labse(self) -> dict:
         threading.Thread(target=self._ensure_labse, daemon=True).start()
@@ -193,6 +198,9 @@ class ConcordAPI:
                     termbase=(self._termbase.check_map()
                               if cfg.get("check_termbase") else None),
                 )
+                self._norm = {"fold_taa": ec.fold_taa,
+                              "strip_clitics": ec.strip_clitics,
+                              "strip_diacritics": ec.strip_diacritics}
                 size = int(cfg.get("batch_size", 0) or 0)
                 bnum = max(int(cfg.get("batch_num", 1) or 1), 1)
                 segs = self._segments
@@ -259,6 +267,18 @@ class ConcordAPI:
             return False
         return not (f.verify and f.verify.get("cleared"))
 
+    @staticmethod
+    def _flag_items(flags, min_distinct: int = 2) -> list:
+        """[{ngram, spans}] payload the verifiers (LaBSE / MT / LLM) consume."""
+        return [{"ngram": f.ngram, "spans": [v.span for v in f.variants]}
+                for f in flags if f.distinct >= min_distinct]
+
+    def _sort_by_significance(self, flags) -> list:
+        """Rank inconsistent flags first, then by score, then frequency."""
+        flags.sort(key=lambda f: (self._is_inconsistent(f), f.score, f.total),
+                   reverse=True)
+        return flags
+
     def _apply_decisions(self, flags, include_consistent):
         """Suppress flags the reviewer already decided (accepted/dismissed) so
         they never resurface. In all-n-grams mode they stay, marked as decided;
@@ -283,8 +303,7 @@ class ConcordAPI:
         mode) kept as a consistent single-translation term."""
         from .core import embed as emb_mod
         from .core.engine import _entropy_score
-        items = [{"ngram": f.ngram, "spans": [v.span for v in f.variants]}
-                 for f in flags if f.distinct >= 2]
+        items = self._flag_items(flags)
         if not items:
             return flags
         self._ensure_labse()
@@ -315,9 +334,7 @@ class ConcordAPI:
                 kept.append(f)
         self._log(f"Faithfulness: dropped {n_drop} mis-aligned variant(s), "
                   f"removed {n_fp} false-positive flag(s)")
-        kept.sort(key=lambda f: (self._is_inconsistent(f), f.score, f.total),
-                  reverse=True)
-        return kept
+        return self._sort_by_significance(kept)
 
     def _labse_prefilter(self, flags, include_consistent, threshold=0.98):
         """Verify each candidate inconsistent flag with LaBSE before results are
@@ -326,8 +343,7 @@ class ConcordAPI:
         include-all mode) downgraded to consistent. Genuinely different spans
         stay flagged even if they are semantically acceptable synonyms."""
         from .core import embed as emb_mod
-        items = [{"ngram": f.ngram, "spans": [v.span for v in f.variants]}
-                 for f in flags if f.distinct >= 2]
+        items = self._flag_items(flags)
         if not items:
             return flags
         self._ensure_labse()
@@ -349,9 +365,16 @@ class ConcordAPI:
             kept.append(f)
         self._log(f"LaBSE pre-filter: cleared {cleared} near-identical "
                   f"duplicate(s); kept the rest as inconsistent")
-        kept.sort(key=lambda f: (self._is_inconsistent(f), f.score, f.total),
-                  reverse=True)
-        return kept
+        return self._sort_by_significance(kept)
+
+    def _occ_to_json(self, o) -> dict:
+        """One occurrence -> dict, overlaying the reviewer's in-progress edit
+        onto the target (falls back to the original target if unedited)."""
+        return {
+            "sid": o.sid, "file": o.file, "unit": o.unit,
+            "source": o.source, "span": o.span,
+            "target": self._edits.get(o.sid, o.target),
+        }
 
     def _flags_to_json(self, flags) -> list:
         out = []
@@ -367,12 +390,9 @@ class ConcordAPI:
                 "variants": [{
                     "span": v.span, "count": v.count,
                     "raw": (v.occurrences[0].raw if v.occurrences else v.span),
-                    "occurrences": [{
-                        "sid": o.sid, "file": o.file, "unit": o.unit,
-                        "source": o.source,
-                        "target": self._edits.get(o.sid, o.target),
-                        "original": o.target, "span": o.span,
-                    } for o in v.occurrences],
+                    "occurrences": [{**self._occ_to_json(o),
+                                     "original": o.target}
+                                    for o in v.occurrences],
                 } for v in f.variants],
             })
         return out
@@ -385,11 +405,8 @@ class ConcordAPI:
                 "score": round(f.score, 3),
                 "uses": [{
                     "term": u.term, "count": u.count,
-                    "occurrences": [{
-                        "sid": o.sid, "file": o.file, "unit": o.unit,
-                        "source": o.source, "span": o.span,
-                        "target": self._edits.get(o.sid, o.target),
-                    } for o in u.occurrences],
+                    "occurrences": [self._occ_to_json(o)
+                                    for o in u.occurrences],
                 } for u in f.uses],
             })
         return out
@@ -508,8 +525,7 @@ class ConcordAPI:
         """Run an LLM verdict over every current forward flag, concurrently."""
         if not self._llm_cfg:
             return {"error": "LLM not configured."}
-        items = [{"ngram": f.ngram, "spans": [v.span for v in f.variants]}
-                 for f in self._flags]
+        items = self._flag_items(self._flags, min_distinct=1)
         verdicts = llm_mod.judge_all(self._llm_cfg, items)
         return {"verdicts": [
             {"ngram": it["ngram"], **v} for it, v in zip(items, verdicts)
@@ -523,8 +539,7 @@ class ConcordAPI:
         verdicts in a shared shape (ngram, verdict, summary, rows)."""
         if not self._flags:
             return {"error": "Run an analysis first."}
-        items = [{"ngram": f.ngram, "spans": [v.span for v in f.variants]}
-                 for f in self._flags if f.distinct >= 2]
+        items = self._flag_items(self._flags)
         if not items:
             return {"verdicts": [], "method": method}
         try:
@@ -674,7 +689,7 @@ class ConcordAPI:
         from .core import glossary as gl
         if not self._glossary:
             return {"ok": False, "msg": "No glossary loaded."}
-        viols = gl.check_adherence(self._segments, self._glossary)
+        viols = gl.check_adherence(self._segments, self._glossary, **self._norm)
         return {"ok": True, "count": len(viols), "violations": [{
             "sid": v.sid, "file": v.file, "term": v.source_term,
             "approved": v.approved, "source": v.segment_source,

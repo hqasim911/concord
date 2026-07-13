@@ -71,6 +71,19 @@ def light_stem_ar(word: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Key normalization (source n-gram -> lookup key)
+# ---------------------------------------------------------------------------
+def normalize_key(text: str) -> str:
+    """Canonical lookup key for a source n-gram: lowercase, whitespace-collapsed.
+
+    Shared by the term base and the decisions store, and MUST match the JS
+    mirror `jsKey` in ui/app.js — decision/vault keys are matched across the
+    JS↔Python bridge, so the two implementations have to agree exactly.
+    """
+    return " ".join(text.lower().split())
+
+
+# ---------------------------------------------------------------------------
 # Tokenization
 # ---------------------------------------------------------------------------
 _WORD_RE = re.compile(r"[^\s]+")

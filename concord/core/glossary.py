@@ -79,8 +79,9 @@ def load_glossary(path: str) -> List[GlossaryEntry]:
     return load_glossary_csv(path)
 
 
-def _norm(s: str, fold_taa: bool, strip_clitics: bool) -> str:
-    s = normalize_ar(s, fold_taa)
+def _norm(s: str, fold_taa: bool, strip_clitics: bool,
+          strip_diacritics: bool = True) -> str:
+    s = normalize_ar(s, fold_taa, strip_diacritics)
     if strip_clitics:
         s = " ".join(light_stem_ar(w) for w in s.split())
     return s
@@ -89,20 +90,23 @@ def _norm(s: str, fold_taa: bool, strip_clitics: bool) -> str:
 def check_adherence(
     segments, entries: List[GlossaryEntry],
     fold_taa: bool = True, strip_clitics: bool = True,
+    strip_diacritics: bool = True,
 ) -> List[Violation]:
     """Return segments that use a glossary source term but not its approved
-    Arabic translation (compared under the same normalization as the engine)."""
+    Arabic translation (compared under the SAME normalization as the engine —
+    the caller must pass the analysis's fold_taa/strip_clitics/strip_diacritics
+    so a term the engine treats as matching isn't reported as a violation)."""
     prepared: List[Tuple[GlossaryEntry, re.Pattern, str]] = []
     for e in entries:
         pat = re.compile(r"\b" + re.escape(e.source.lower()) + r"\b")
-        appr = _norm(e.target, fold_taa, strip_clitics)
+        appr = _norm(e.target, fold_taa, strip_clitics, strip_diacritics)
         if appr:
             prepared.append((e, pat, appr))
 
     viols: List[Violation] = []
     for seg in segments:
         src_low = seg.source.lower()
-        tgt_norm = _norm(seg.target, fold_taa, strip_clitics)
+        tgt_norm = _norm(seg.target, fold_taa, strip_clitics, strip_diacritics)
         for e, pat, appr in prepared:
             if pat.search(src_low) and appr not in tgt_norm:
                 viols.append(Violation(
