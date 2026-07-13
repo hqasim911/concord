@@ -46,7 +46,11 @@ function clog(msg,cls){
 
 let flags = [];
 let lastRendered = [];        // the slice currently in the DOM (post-filter/cap)
-const isInc = f => f.inconsistent && !f.decided;   // inconsistent & not decided
+// The ONE frontend predicate for "an active inconsistency". The backend sends
+// f.inconsistent = STRUCTURAL inconsistency (mirrors _is_structural_inconsistent);
+// we compose "&& not decided" here so live decide/undecide needs no re-analysis.
+// Read flag inconsistency ONLY through isInc(f), never f.inconsistent directly.
+const isInc = f => f.inconsistent && !f.decided;
 let edits = new Map();        // sid -> text (mirror of backend for UI)
 let segOriginal = new Map();  // sid -> original target
 
@@ -283,14 +287,14 @@ function render(){
       </div></div>`;
     const dec = f.decided
       ? `<span class="decided-tag">decided: ${esc(f.decided)}</span><button class="undobtn" data-g="${gi}">Undo</button>`
-      : (f.inconsistent
+      : (isInc(f)
           ? `<button class="whybtn" data-g="${gi}">why flagged?</button><button class="decbtn accept" data-g="${gi}">Accept variance</button><button class="decbtn dismiss" data-g="${gi}">Dismiss</button>`
           : "");
-    return `<div class="group ${f.inconsistent?'':'consistent'} ${f.tb_violation?'violation':''} ${f.decided?'decided':''}">
+    return `<div class="group ${isInc(f)?'':'consistent'} ${f.tb_violation?'violation':''} ${f.decided?'decided':''}">
       <div class="group-head" data-g="${gi}">
         <span class="chev">▸</span><span class="badge">${f.tb_violation?'vault':f.distinct+' span'+(f.distinct>1?'s':'')}</span>
         <span class="src">${hl(f.ngram,q)}</span>
-        <span class="meta">${f.total} occ${f.inconsistent?` · ${Math.round((f.score||0)*100)}% split`:' · consistent'}${f.verify?` · LaBSE ${esc(f.verify.verdict)}${f.verify.agreement!=null?` (${f.verify.agreement})`:''}`:''}</span>
+        <span class="meta">${f.total} occ${isInc(f)?` · ${Math.round((f.score||0)*100)}% split`:' · consistent'}${f.verify?` · LaBSE ${esc(f.verify.verdict)}${f.verify.agreement!=null?` (${f.verify.agreement})`:''}`:''}</span>
         ${dec}
         <button class="llmbtn ${$("#llm-status").dataset.ok?'':'hidden'}" data-g="${gi}">LLM check</button>
       </div>
@@ -510,11 +514,11 @@ $("#dec-clear").addEventListener("click", async ()=>{
 
 // ---------- approved term base ----------
 $("#approveall").addEventListener("click", async ()=>{
-  const inc=flags.filter(f=>f.inconsistent).length;
+  const inc=flags.filter(isInc).length;   // match backend approve_all (active only)
   if(!inc){ $("#toolshint").textContent="No inconsistent flags to approve."; return; }
   if(!confirm(`Approve the most-frequent translation of ${inc} inconsistent flag(s) into the term base? You can prune it afterwards.`)) return;
   const r=await api().approve_all(); refreshTB();
-  flags.forEach(f=>{ if(f.inconsistent) f.approved=f.variants[0].span; });
+  flags.forEach(f=>{ if(isInc(f)) f.approved=f.variants[0].span; });
   render();
   $("#toolshint").textContent=`Approved ${r.approved} term(s) · ${r.count} in term base.`;
 });

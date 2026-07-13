@@ -106,7 +106,6 @@ class EngineConfig:
     cluster_max_dist: float = 0.2    # normalized edit distance threshold
     merge_contained: bool = True     # fold partial-alignment fragment spans
     min_variant_count: int = 1       # drop variants seen fewer times (noise)
-    reverse: bool = False            # also compute reverse (over-loaded) flags
     include_consistent: bool = False  # keep single-span (consistent) n-grams too
     termbase: Optional[dict] = None  # ngram_key -> approved target (persist check)
     stopwords: Optional[set] = None
@@ -169,7 +168,7 @@ class ConsistencyEngine:
         self.cfg = config or EngineConfig()
 
     # ---- single pass over the corpus ----
-    def _collect(self, segments, progress):
+    def _collect(self, segments, progress, want_reverse: bool = False):
         cfg = self.cfg
         stop = cfg.stopwords or DEFAULT_STOPWORDS
 
@@ -237,19 +236,35 @@ class ConsistencyEngine:
                 gv = groups.setdefault(key, {})
                 gv.setdefault(span, Variant(span=span)).occurrences.append(occ)
 
-                if cfg.reverse:
+                if want_reverse:
                     rg = rev.setdefault(span, {})
                     rg.setdefault(key, TermUse(term=disp)).occurrences.append(occ)
 
         return groups, display, rev
 
+    def analyze_all(
+        self, segments, progress: Optional[Callable[[int, int], None]] = None,
+        want_reverse: bool = False,
+    ):
+        """Forward + (optionally) reverse flags from a SINGLE corpus pass.
+
+        Returns (forward_flags, reverse_flags). The reverse map is built during
+        the same _collect as the forward one — no second tokenize/n-gram pass —
+        and reverse_flags is empty when want_reverse is False.
+        """
+        groups, display, rev = self._collect(segments, progress, want_reverse)
+        flags = self._forward_flags(groups, display)
+        reverse = self._reverse_flags(rev) if want_reverse else []
+        return flags, reverse
+
     def analyze(
         self, segments, progress: Optional[Callable[[int, int], None]] = None
     ) -> List[Flag]:
-        """Forward flags: one English n-gram -> multiple Arabic spans."""
-        cfg = self.cfg
-        groups, display, _ = self._collect(segments, progress)
+        """Forward flags only: one English n-gram -> multiple Arabic spans."""
+        return self.analyze_all(segments, progress, want_reverse=False)[0]
 
+    def _forward_flags(self, groups, display) -> List[Flag]:
+        cfg = self.cfg
         flags: List[Flag] = []
         for key, gv in groups.items():
             raw = list(gv.values())
@@ -285,17 +300,8 @@ class ConsistencyEngine:
                                   f.score, f.total, f.distinct), reverse=True)
         return flags
 
-    def analyze_reverse(
-        self, segments, progress: Optional[Callable[[int, int], None]] = None
-    ) -> List[ReverseFlag]:
+    def _reverse_flags(self, rev) -> List[ReverseFlag]:
         """Reverse flags: one Arabic span -> multiple distinct English n-grams."""
-        prev = self.cfg.reverse
-        self.cfg.reverse = True
-        try:
-            _, _, rev = self._collect(segments, progress)
-        finally:
-            self.cfg.reverse = prev
-
         flags: List[ReverseFlag] = []
         for span, uses_by_term in rev.items():
             uses = list(uses_by_term.values())

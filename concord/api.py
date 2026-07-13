@@ -10,22 +10,20 @@ from __future__ import annotations
 import os
 import threading
 import traceback
-from typing import List, Dict, Optional
+from typing import List, Optional
 
 from .core.aligner import build_aligner
 from .core.engine import ConsistencyEngine, EngineConfig
-from .core.xliff import parse_xliff, set_target_text, serialize, XliffFile, Segment
+from .core.xliff import parse_xliff, set_target_text, serialize
 from .core import llm as llm_mod
+from .session import ProjectState
 
 
 class ConcordAPI:
     def __init__(self):
         self._window = None
         self._aligner = None
-        self._files: Dict[str, XliffFile] = {}
-        self._segments: List[Segment] = []
-        self._seg_by_sid: Dict[str, Segment] = {}
-        self._edits: Dict[str, str] = {}       # sid -> new target
+        self.state = ProjectState()   # loaded documents + reviewer edits
         self._flags = []
         self._reverse = []
         self._glossary = []
@@ -132,48 +130,13 @@ class ConcordAPI:
         )
         if not paths:
             return {"files": []}
-        return self._ingest(list(paths))
-
-    def _ingest(self, paths: List[str]) -> dict:
-        added = []
-        for p in paths:
-            try:
-                xf = parse_xliff(p)
-                self._files[xf.name] = xf
-                added.append({"name": xf.name, "segments": len(xf.segments)})
-            except Exception as e:
-                added.append({"name": os.path.basename(p), "error": str(e)})
-        self._rebuild_segments()
-        return {"files": [{"name": n, "segments": len(f.segments)}
-                          for n, f in self._files.items()],
-                "added": added}
+        return self.state.ingest(list(paths), parse_xliff)
 
     def list_segments(self, limit: int = 2000) -> dict:
-        """Segments for the viewer (capped at `limit` rendered rows)."""
-        segs = self._segments
-        shown = segs[:limit] if limit else segs
-        return {
-            "total": len(segs), "shown": len(shown),
-            "segments": [{"sid": s.sid, "file": s.file,
-                          "source": s.source, "target": s.target}
-                         for s in shown],
-        }
+        return self.state.list_segments(limit)
 
     def remove_file(self, name: str) -> dict:
-        self._files.pop(name, None)
-        self._rebuild_segments()
-        return {"files": [{"name": n, "segments": len(f.segments)}
-                          for n, f in self._files.items()]}
-
-    def _rebuild_segments(self):
-        self._segments = []
-        for xf in self._files.values():
-            self._segments.extend(xf.segments)
-        self._seg_by_sid = {s.sid: s for s in self._segments}
-        # drop edits whose segment vanished
-        for sid in list(self._edits):
-            if sid not in self._seg_by_sid:
-                self._edits.pop(sid)
+        return self.state.remove_file(name)
 
     # ---- analysis ----
     def analyze(self, cfg: dict) -> dict:
@@ -203,23 +166,29 @@ class ConcordAPI:
                               "strip_diacritics": ec.strip_diacritics}
                 size = int(cfg.get("batch_size", 0) or 0)
                 bnum = max(int(cfg.get("batch_num", 1) or 1), 1)
-                segs = self._segments
+                segs = self.state.segments
                 if size > 0:
                     start = (bnum - 1) * size
-                    segs = self._segments[start:start + size]
+                    segs = self.state.segments[start:start + size]
                     self._log(f"Batch {bnum}: segments {start}–"
-                              f"{start + len(segs)} of {len(self._segments)}")
+                              f"{start + len(segs)} of {len(self.state.segments)}")
 
                 self._log(f"Backend: {self._model_kind} / {self._model_name}")
                 self._log(f"Analyzing {len(segs)} segment(s) "
-                          f"across {len(self._files)} file(s)")
+                          f"across {len(self.state.files)} file(s)")
                 self._log("Aligning unique sentence pairs…")
                 engine = ConsistencyEngine(self._aligner, ec)
 
                 def prog(done, total):
                     self._emit("analyze-progress",
                                {"done": done, "total": total, "phase": "align"})
-                flags = engine.analyze(segs, progress=prog)
+                # Forward + reverse from one corpus pass (reverse map is built
+                # in the same _collect; alignments are shared, not recomputed).
+                want_reverse = bool(cfg.get("reverse"))
+                if want_reverse:
+                    self._log("Forward + reverse (AR→EN) in one pass…")
+                flags, reverse = engine.analyze_all(
+                    segs, progress=prog, want_reverse=want_reverse)
                 if cfg.get("faithfulness_filter"):
                     flags = self._faithfulness_filter(
                         flags, ec.include_consistent,
@@ -232,11 +201,7 @@ class ConcordAPI:
                 self._flags = flags
                 inc = sum(1 for f in flags if self._is_inconsistent(f))
                 self._log(f"Grouped {len(flags)} n-gram(s) — {inc} inconsistent")
-
-                reverse = []
-                if cfg.get("reverse"):
-                    self._log("Reverse pass (AR→EN)…")
-                    reverse = engine.analyze_reverse(segs)
+                if want_reverse:
                     self._log(f"Reverse: {len(reverse)} over-loaded span(s)")
                 self._reverse = reverse
 
@@ -246,7 +211,7 @@ class ConcordAPI:
                 self._log("Done.")
                 self._emit("analyze-done", {
                     "segments": len(segs),
-                    "files": len(self._files),
+                    "files": len(self.state.files),
                     "inconsistent": inc,
                     "flags": self._flags_to_json(flags),
                     "reverse": self._reverse_to_json(reverse),
@@ -259,13 +224,20 @@ class ConcordAPI:
         return {"started": True}
 
     @staticmethod
-    def _is_inconsistent(f) -> bool:
-        """A flag is inconsistent if it has >=2 spans, the LaBSE pre-filter (if
-        run) did not clear it as a near-identical duplicate, and the reviewer
-        has not already decided it (accepted/dismissed)."""
-        if f.distinct < 2 or f.decided:
+    def _is_structural_inconsistent(f) -> bool:
+        """Structural inconsistency: >=2 spans that the LaBSE pre-filter (if
+        run) did not clear as a near-identical duplicate. Independent of the
+        reviewer's decision — that is composed on top (see _is_inconsistent and
+        the frontend `isInc`), so this is the value serialized to the UI."""
+        if f.distinct < 2:
             return False
         return not (f.verify and f.verify.get("cleared"))
+
+    @classmethod
+    def _is_inconsistent(cls, f) -> bool:
+        """An ACTIVE inconsistency: structurally inconsistent AND not yet
+        decided (accepted/dismissed) by the reviewer."""
+        return not f.decided and cls._is_structural_inconsistent(f)
 
     @staticmethod
     def _flag_items(flags, min_distinct: int = 2) -> list:
@@ -373,7 +345,7 @@ class ConcordAPI:
         return {
             "sid": o.sid, "file": o.file, "unit": o.unit,
             "source": o.source, "span": o.span,
-            "target": self._edits.get(o.sid, o.target),
+            "target": self.state.target_of(o),
         }
 
     def _flags_to_json(self, flags) -> list:
@@ -382,7 +354,9 @@ class ConcordAPI:
             out.append({
                 "ngram": f.ngram, "distinct": f.distinct, "total": f.total,
                 "score": round(f.score, 3),
-                "inconsistent": self._is_inconsistent(f),
+                # structural inconsistency; the UI composes `&& !decided` in
+                # `isInc` so live decide/undecide need no re-analysis.
+                "inconsistent": self._is_structural_inconsistent(f),
                 "verify": f.verify, "dropped": f.dropped,
                 "approved": f.termbase_approved,
                 "tb_violation": f.termbase_violation,
@@ -413,16 +387,7 @@ class ConcordAPI:
 
     def _placeholder_count(self) -> int:
         from .core.xliff import placeholder_issues
-        return len(placeholder_issues(self._segments))
-
-    @staticmethod
-    def _splice(target: str, lo, hi, corrected: str) -> str:
-        """Replace only the aligned token range [lo, hi] in the target with the
-        corrected term, keeping the rest of the segment intact."""
-        toks = target.split()
-        if lo is None or hi is None or lo < 0 or hi >= len(toks) or lo > hi:
-            return corrected                       # can't locate → old behavior
-        return " ".join(toks[:lo] + [corrected] + toks[hi + 1:])
+        return len(placeholder_issues(self.state.segments))
 
     def apply_correction(self, ngram: str, corrected: str) -> dict:
         """Standardize a flagged term: splice `corrected` into every occurrence
@@ -437,43 +402,27 @@ class ConcordAPI:
                 continue
             for v in f.variants:
                 for o in v.occurrences:
-                    new_t = self._splice(o.target, o.tgt_lo, o.tgt_hi, corrected)
-                    if new_t == o.target:
-                        self._edits.pop(o.sid, None)
-                    else:
-                        self._edits[o.sid] = new_t
-                    out[o.sid] = new_t
+                    out[o.sid] = self.state.apply_splice(o, corrected)
             break
-        return {"ok": True, "targets": out, "edits": len(self._edits)}
+        return {"ok": True, "targets": out, "edits": len(self.state.edits)}
 
-    # ---- editing ----
+    # ---- editing (delegated to ProjectState) ----
     def set_edit(self, sid: str, text: str) -> dict:
-        seg = self._seg_by_sid.get(sid)
-        if not seg:
-            return {"ok": False}
-        if text == seg.target:
-            self._edits.pop(sid, None)
-        else:
-            self._edits[sid] = text
-        return {"ok": True, "edits": len(self._edits)}
+        return self.state.set_edit(sid, text)
 
     def revert(self, sids: List[str]) -> dict:
-        for sid in sids:
-            self._edits.pop(sid, None)
-        return {"ok": True, "edits": len(self._edits)}
+        return self.state.revert(sids)
 
     def revert_all(self) -> dict:
-        self._edits.clear()
-        return {"ok": True, "edits": 0}
+        return self.state.revert_all()
 
     def edit_count(self) -> dict:
-        files = {self._seg_by_sid[s].file for s in self._edits if s in self._seg_by_sid}
-        return {"edits": len(self._edits), "files": len(files)}
+        return self.state.edit_count()
 
     # ---- export ----
     def export(self) -> dict:
         from webview import FOLDER_DIALOG
-        if not self._edits:
+        if not self.state.edits:
             return {"ok": False, "msg": "No edits to export."}
         folder = self._window.create_file_dialog(FOLDER_DIALOG)
         if not folder:
@@ -483,8 +432,8 @@ class ConcordAPI:
         # apply edits to DOM
         dirty_files = set()
         dropped_tags = 0
-        for sid, text in self._edits.items():
-            seg = self._seg_by_sid.get(sid)
+        for sid, text in self.state.edits.items():
+            seg = self.state.seg_by_sid.get(sid)
             if seg:
                 res = set_target_text(seg, text)
                 if res.get("dropped_tags"):
@@ -493,7 +442,7 @@ class ConcordAPI:
 
         written = []
         for name in dirty_files:
-            xf = self._files[name]
+            xf = self.state.files[name]
             base, ext = os.path.splitext(name)
             out_name = f"{base}-corrected{ext or '.xlf'}"
             out_path = os.path.join(out_dir, out_name)
@@ -689,7 +638,7 @@ class ConcordAPI:
         from .core import glossary as gl
         if not self._glossary:
             return {"ok": False, "msg": "No glossary loaded."}
-        viols = gl.check_adherence(self._segments, self._glossary, **self._norm)
+        viols = gl.check_adherence(self.state.segments, self._glossary, **self._norm)
         return {"ok": True, "count": len(viols), "violations": [{
             "sid": v.sid, "file": v.file, "term": v.source_term,
             "approved": v.approved, "source": v.segment_source,
@@ -699,7 +648,7 @@ class ConcordAPI:
     # ---- placeholder QA ----
     def placeholder_report(self) -> dict:
         from .core.xliff import placeholder_issues
-        issues = placeholder_issues(self._segments)
+        issues = placeholder_issues(self.state.segments)
         return {"count": len(issues), "items": [{
             "sid": s.sid, "file": s.file, "source": s.source,
             "target": s.target, "src_ph": s.src_ph, "tgt_ph": s.tgt_ph,
